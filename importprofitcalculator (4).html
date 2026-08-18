@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>수입 제품 영업이익 계산기</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --card2: #1d212b;
+    --border: #2a2e38;
+    --text: #eef0f3;
+    --muted: #9aa1ad;
+    --accent: #4f8cff;
+    --accent-hover: #6ba0ff;
+    --danger: #ff6b6b;
+    --positive: #46c98f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    padding: 32px 16px 80px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+  p.desc { color: var(--muted); font-size: 13px; margin: 0 0 24px; line-height: 1.6; }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .month-select {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  select, input[type="text"], input[type="number"], input[type="date"] {
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+    width: 100%;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 14px;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(255,107,107,0.35); }
+  .btn-danger:hover { background: rgba(255,107,107,0.1); }
+  .btn-small { padding: 5px 8px; font-size: 12px; }
+
+  .summary {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .summary .block .label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .summary .block .value { font-size: 22px; font-weight: 700; }
+  .summary .block .value.revenue { color: var(--text); }
+  .summary .block .value.cost { color: var(--danger); }
+  .summary .block .value.profit { color: var(--positive); }
+  .summary .block .value.profit.negative { color: var(--danger); }
+
+  .product-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .product-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .product-head .name-field {
+    flex: 1;
+    min-width: 160px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .revenue-field {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .revenue-input-row { display: flex; align-items: center; gap: 6px; }
+  .revenue-input-row input { width: 130px; }
+  .revenue-hint-row { display: flex; align-items: center; gap: 8px; }
+  .revenue-hint { font-size: 11px; color: var(--muted); }
+  .revenue-hint.muted-hint { font-style: italic; }
+
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 760px; }
+  th, td { text-align: left; padding: 6px 5px; font-size: 13px; vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td.idx-cell { width: 24px; color: var(--muted); text-align: center; }
+  td.date-cell { width: 14%; }
+  td.qty-cell { width: 12%; }
+  td.cost-cell { width: 15%; }
+  td.total-cell { width: 15%; color: var(--danger); font-weight: 600; white-space: nowrap; }
+  td.action-cell { width: 40px; text-align: center; }
+
+  .add-row { margin-top: 10px; }
+
+  .product-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .product-total { font-size: 13px; color: var(--muted); }
+  .product-total b { color: var(--text); }
+  .product-total b.cost { color: var(--danger); }
+  .product-total b.profit { color: var(--positive); }
+  .product-total b.profit.negative { color: var(--danger); }
+
+  .note {
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 28px;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .login-screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    z-index: 100;
+    padding: 24px;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 360px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+  }
+  .login-card h1 { font-size: 18px; margin: 0 0 6px; }
+  .login-desc { color: var(--muted); font-size: 13px; margin: 0 0 20px; line-height: 1.5; }
+  .login-card label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
+  .login-card input {
+    width: 100%;
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--text);
+    outline: none;
+  }
+  .login-card input:focus { border-color: var(--accent); }
+  .login-card .btn-primary { width: 100%; margin-top: 20px; padding: 12px; font-size: 14px; }
+  .login-status { margin-top: 12px; font-size: 12px; color: var(--muted); min-height: 16px; line-height: 1.5; }
+  .login-status.error { color: var(--danger); }
+
+  .account-bar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .save-status { font-size: 12px; color: var(--muted); }
+  .save-status.error { color: var(--danger); }
+  .save-status.ok { color: var(--positive); }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <h1>로그인</h1>
+    <p class="login-desc">이 도구는 로그인한 사용자만 사용할 수 있습니다. 등록된 계정으로 로그인해주세요.</p>
+    <label for="loginEmail">이메일</label>
+    <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="username">
+    <label for="loginPassword">비밀번호</label>
+    <input type="password" id="loginPassword" placeholder="비밀번호" autocomplete="current-password">
+    <button class="btn-primary" id="loginBtn" onclick="handleLogin()">로그인</button>
+    <div id="loginStatus" class="login-status"></div>
+  </div>
+</div>
+
+<div class="wrap" id="appScreen" style="display:none;">
+  <div class="account-bar">
+    <span id="saveStatus" class="save-status"></span>
+    <button class="btn-ghost btn-small" onclick="refreshTrackerLink()">판매 데이터 새로고침</button>
+    <button class="btn-primary btn-small" onclick="saveUserData()">저장</button>
+    <span id="accountEmail"></span>
+    <button class="btn-ghost btn-small" onclick="handleLogout()">로그아웃</button>
+  </div>
+  <h1>수입 제품 영업이익 계산기</h1>
+  <p class="desc">수입 건(입고 기록)마다 수입원가·창고보관비·운송비를 입력하고, 그 달의 매출을 입력하면<br>"이번 달 매출 − 이번 달 발생 비용 = 영업이익"을 자동으로 계산합니다. 제품명이 "제품별 고객 판매량 관리" 도구와 같으면, 그 도구에 저장된 매출 합계를 여기서 바로 확인하고 "이 값으로 채우기" 버튼으로 가져올 수 있습니다.</p>
+
+  <div class="toolbar">
+    <div class="month-select">
+      <label style="color:var(--muted); font-size:13px;">조회 년월</label>
+      <select id="yearSelect" onchange="renderAll()" style="width:auto;"></select>
+      <select id="monthSelect" onchange="renderAll()" style="width:auto;"></select>
+    </div>
+    <button class="btn-primary" onclick="addProduct()">+ 제품 추가</button>
+  </div>
+
+  <div class="summary">
+    <div class="block">
+      <div class="label" id="summaryRevenueLabel">이번 달 전체 매출</div>
+      <div class="value revenue" id="summaryRevenueValue">0원</div>
+    </div>
+    <div class="block">
+      <div class="label" id="summaryCostLabel">이번 달 전체 비용</div>
+      <div class="value cost" id="summaryCostValue">0원</div>
+    </div>
+    <div class="block">
+      <div class="label" id="summaryProfitLabel">이번 달 전체 영업이익</div>
+      <div class="value profit" id="summaryProfitValue">0원</div>
+    </div>
+  </div>
+
+  <div id="productList"></div>
+
+  <p class="note">※ 이 화면은 "제품별 고객 판매량 관리" 도구와 짝을 이루는 별도 화면입니다. 지금은 매출 숫자를 직접 입력해서 쓰고 있어요.<br>로그인 계정별로 데이터를 저장합니다. 화면 위쪽 "저장" 버튼을 눌러야 실제로 저장되며, 누르지 않고 새로고침하면 마지막 저장 시점 이후 입력한 내용은 사라져요.</p>
+</div>
+
+<script>
+  // ---- 로그인 (Supabase Auth) ----
+  const SUPABASE_URL = 'https://gotfguvfzpuxeixjcvao.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_B7C64nu7bAudWoA7-EjTXw_-jMe-wME';
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  async function showApp(email, userId) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appScreen').style.display = 'block';
+    document.getElementById('accountEmail').textContent = email;
+    await loadTrackerRevenueSource(userId);
+    await loadUserData(userId);
+  }
+
+  function showLogin() {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appScreen').style.display = 'none';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('saveStatus').textContent = '';
+  }
+
+  async function checkSession() {
+    const { data } = await supabaseClient.auth.getSession();
+    if (data.session) {
+      showApp(data.session.user.email, data.session.user.id);
+    } else {
+      showLogin();
+    }
+  }
+
+  async function handleLogin() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const statusEl = document.getElementById('loginStatus');
+    const btn = document.getElementById('loginBtn');
+
+    statusEl.textContent = '';
+    statusEl.className = 'login-status';
+
+    if (!email || !password) {
+      statusEl.textContent = '이메일과 비밀번호를 입력해주세요.';
+      statusEl.className = 'login-status error';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '로그인 중...';
+
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+    btn.disabled = false;
+    btn.textContent = '로그인';
+
+    if (error) {
+      statusEl.textContent = '로그인 실패: 이메일 또는 비밀번호를 확인해주세요.';
+      statusEl.className = 'login-status error';
+      return;
+    }
+
+    showApp(data.user.email, data.user.id);
+  }
+
+  async function handleLogout() {
+    await supabaseClient.auth.signOut();
+    showLogin();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleLogin();
+    });
+  });
+
+  checkSession();
+
+  // ---- 데이터 저장/불러오기 (Supabase 데이터베이스) ----
+  async function loadUserData(userId) {
+    const statusEl = document.getElementById('saveStatus');
+    statusEl.textContent = '불러오는 중...';
+    statusEl.className = 'save-status';
+
+    const { data, error } = await supabaseClient
+      .from('import_profit_data')
+      .select('data')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      statusEl.textContent = '불러오기 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    if (data && Array.isArray(data.data) && data.data.length > 0) {
+      products = data.data;
+      productIdSeq = Math.max(0, ...products.map(p => p.id || 0)) + 1;
+      renderAll();
+      statusEl.textContent = '저장된 데이터를 불러왔어요.';
+      statusEl.className = 'save-status ok';
+    } else {
+      renderAll(); // 판매관리 도구 연동 데이터를 반영해 다시 그려줍니다.
+      statusEl.textContent = '저장된 데이터가 없어 기본 화면으로 시작해요.';
+      statusEl.className = 'save-status';
+    }
+  }
+
+  async function saveUserData() {
+    const statusEl = document.getElementById('saveStatus');
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    const userId = sessionData.session && sessionData.session.user.id;
+    if (!userId) return;
+
+    statusEl.textContent = '저장 중...';
+    statusEl.className = 'save-status';
+
+    const { error } = await supabaseClient
+      .from('import_profit_data')
+      .upsert({ user_id: userId, data: products, updated_at: new Date().toISOString() });
+
+    if (error) {
+      statusEl.textContent = '저장 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    statusEl.textContent = `마지막 저장 ${hh}:${mm}`;
+    statusEl.className = 'save-status ok';
+  }
+
+  // ---- 판매관리 도구와 매출 연동 ----
+  let salesTrackerProducts = [];
+
+  async function loadTrackerRevenueSource(userId) {
+    const { data, error } = await supabaseClient
+      .from('sales_data')
+      .select('data')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error || !data || !Array.isArray(data.data)) {
+      salesTrackerProducts = [];
+      return;
+    }
+    salesTrackerProducts = data.data;
+  }
+
+  function computeTrackerRevenue(productName, pk) {
+    const nameNorm = (productName || '').trim().toLowerCase();
+    if (!nameNorm || !salesTrackerProducts.length) return null;
+
+    let total = 0;
+    let found = false;
+    salesTrackerProducts.forEach(p => {
+      if ((p.name || '').trim().toLowerCase() === nameNorm) {
+        found = true;
+        (p.customers || []).forEach(c => {
+          const qty = (c.volumes && c.volumes[pk]) || 0;
+          const price = (c.prices && c.prices[pk]) || 0;
+          total += qty * price;
+        });
+      }
+    });
+    return found ? total : null;
+  }
+
+  function updateRevenueHint(product) {
+    const hintEl = document.getElementById(`revHint-${product.id}`);
+    if (!hintEl) return;
+    const linked = computeTrackerRevenue(product.name, periodKey());
+    if (linked === null) {
+      hintEl.textContent = '판매관리 도구에 같은 이름 제품이 없어요.';
+      hintEl.classList.add('muted-hint');
+    } else {
+      hintEl.textContent = `판매관리 도구 매출: ${formatNumber(linked)}원`;
+      hintEl.classList.remove('muted-hint');
+    }
+  }
+
+  function fillFromTracker(productId) {
+    const product = products.find(p => p.id === productId);
+    const linked = computeTrackerRevenue(product.name, periodKey());
+    if (linked === null) return;
+    product.revenues[periodKey()] = linked;
+    const input = document.querySelector(`.product-card[data-product-id="${productId}"] .revenue-input-row input`);
+    if (input) input.value = linked;
+    updateTotals();
+  }
+
+  async function refreshTrackerLink() {
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    const userId = sessionData.session && sessionData.session.user.id;
+    if (!userId) return;
+    const statusEl = document.getElementById('saveStatus');
+    statusEl.textContent = '판매 데이터 새로고침 중...';
+    statusEl.className = 'save-status';
+    await loadTrackerRevenueSource(userId);
+    renderAll();
+    statusEl.textContent = '판매 데이터를 새로 가져왔어요.';
+    statusEl.className = 'save-status ok';
+  }
+
+  // ---- 영업이익 계산기 ----
+  let products = [];
+  let currentYear = 2026;
+  let currentMonth = 8;
+  let productIdSeq = 1;
+  const YEAR_RANGE = { start: 2024, end: 2035 };
+
+  function periodKey() {
+    return `${currentYear}-${currentMonth}`;
+  }
+
+  function periodOfDate(dateStr) {
+    if (!dateStr) return null;
+    const parts = dateStr.split('-');
+    if (parts.length < 2) return null;
+    return `${parseInt(parts[0], 10)}-${parseInt(parts[1], 10)}`;
+  }
+
+  function getDefaultDate() {
+    const mm = String(currentMonth).padStart(2, '0');
+    return `${currentYear}-${mm}-01`;
+  }
+
+  function formatNumber(n) {
+    return Math.round(n || 0).toLocaleString('ko-KR');
+  }
+
+  function formatQty(n) {
+    return formatNumber(n) + ' Kg';
+  }
+
+  function addProduct(name) {
+    products.push({
+      id: productIdSeq++,
+      name: name || `제품 ${products.length + 1}`,
+      revenues: {}, // periodKey -> 매출(원), 직접 입력
+      imports: [{ date: getDefaultDate(), qty: 0, cost: 0, storage: 0, transport: 0 }]
+    });
+    renderAll();
+  }
+
+  function removeProduct(id) {
+    products = products.filter(p => p.id !== id);
+    renderAll();
+  }
+
+  function addImportRecord(productId) {
+    const product = products.find(p => p.id === productId);
+    product.imports.push({ date: getDefaultDate(), qty: 0, cost: 0, storage: 0, transport: 0 });
+    renderAll();
+  }
+
+  function removeImportRecord(productId, idx) {
+    const product = products.find(p => p.id === productId);
+    product.imports.splice(idx, 1);
+    renderAll();
+  }
+
+  function initYearSelect() {
+    const sel = document.getElementById('yearSelect');
+    for (let y = YEAR_RANGE.start; y <= YEAR_RANGE.end; y++) {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y + '년';
+      if (y === currentYear) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function initMonthSelect() {
+    const sel = document.getElementById('monthSelect');
+    for (let m = 1; m <= 12; m++) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m + '월';
+      if (m === currentMonth) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function recordCost(rec) {
+    return (rec.cost || 0) + (rec.storage || 0) + (rec.transport || 0);
+  }
+
+  function costForPeriod(product, pk) {
+    return product.imports.reduce((sum, rec) => {
+      return periodOfDate(rec.date) === pk ? sum + recordCost(rec) : sum;
+    }, 0);
+  }
+
+  function renderAll() {
+    currentYear = parseInt(document.getElementById('yearSelect').value, 10);
+    currentMonth = parseInt(document.getElementById('monthSelect').value, 10);
+    const listEl = document.getElementById('productList');
+    listEl.innerHTML = '';
+
+    let grandRevenue = 0;
+    let grandCost = 0;
+
+    products.forEach(product => {
+      const card = document.createElement('div');
+      card.className = 'product-card';
+      card.dataset.productId = product.id;
+
+      const head = document.createElement('div');
+      head.className = 'product-head';
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'name-field';
+      nameInput.value = product.name;
+      nameInput.addEventListener('input', (e) => {
+        product.name = e.target.value;
+        updateRevenueHint(product);
+      });
+      head.appendChild(nameInput);
+
+      const revenueField = document.createElement('div');
+      revenueField.className = 'revenue-field';
+
+      const inputRow = document.createElement('div');
+      inputRow.className = 'revenue-input-row';
+      const revenueLabel = document.createElement('span');
+      revenueLabel.textContent = `${currentYear}년 ${currentMonth}월 매출(원)`;
+      const revenueInput = document.createElement('input');
+      revenueInput.type = 'number';
+      revenueInput.placeholder = '0';
+      revenueInput.value = product.revenues[periodKey()] || '';
+      revenueInput.addEventListener('input', (e) => {
+        product.revenues[periodKey()] = parseFloat(e.target.value) || 0;
+        updateTotals();
+      });
+      inputRow.appendChild(revenueLabel);
+      inputRow.appendChild(revenueInput);
+      revenueField.appendChild(inputRow);
+
+      const hintRow = document.createElement('div');
+      hintRow.className = 'revenue-hint-row';
+      const revenueHint = document.createElement('span');
+      revenueHint.id = `revHint-${product.id}`;
+      revenueHint.className = 'revenue-hint';
+      const linkedRevenue = computeTrackerRevenue(product.name, periodKey());
+      if (linkedRevenue === null) {
+        revenueHint.textContent = '판매관리 도구에 같은 이름 제품이 없어요.';
+        revenueHint.classList.add('muted-hint');
+      } else {
+        revenueHint.textContent = `판매관리 도구 매출: ${formatNumber(linkedRevenue)}원`;
+      }
+      hintRow.appendChild(revenueHint);
+
+      const fillBtn = document.createElement('button');
+      fillBtn.className = 'btn-ghost btn-small';
+      fillBtn.textContent = '이 값으로 채우기';
+      fillBtn.onclick = () => fillFromTracker(product.id);
+      hintRow.appendChild(fillBtn);
+
+      revenueField.appendChild(hintRow);
+      head.appendChild(revenueField);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-danger';
+      delBtn.textContent = '제품 삭제';
+      delBtn.onclick = () => removeProduct(product.id);
+      head.appendChild(delBtn);
+
+      card.appendChild(head);
+
+      const scrollWrap = document.createElement('div');
+      scrollWrap.className = 'table-scroll';
+      const table = document.createElement('table');
+      table.innerHTML = `<thead><tr>
+        <th class="idx-cell">#</th>
+        <th>수입일자</th>
+        <th>수입물량(Kg)</th>
+        <th>수입원가(원)</th>
+        <th>창고보관비(원)</th>
+        <th>운송비(원)</th>
+        <th>비용합계</th>
+        <th></th>
+      </tr></thead>`;
+      const tbody = document.createElement('tbody');
+
+      product.imports.forEach((rec, idx) => {
+        const tr = document.createElement('tr');
+
+        const idxTd = document.createElement('td');
+        idxTd.className = 'idx-cell';
+        idxTd.textContent = idx + 1;
+        tr.appendChild(idxTd);
+
+        const dateTd = document.createElement('td');
+        dateTd.className = 'date-cell';
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.value = rec.date;
+        dateInput.addEventListener('change', (e) => { rec.date = e.target.value; renderAll(); });
+        dateTd.appendChild(dateInput);
+        tr.appendChild(dateTd);
+
+        const qtyTd = document.createElement('td');
+        qtyTd.className = 'qty-cell';
+        const qtyInput = document.createElement('input');
+        qtyInput.type = 'number';
+        qtyInput.placeholder = '0';
+        qtyInput.value = rec.qty || '';
+        qtyInput.addEventListener('input', (e) => { rec.qty = parseFloat(e.target.value) || 0; updateTotals(); });
+        qtyTd.appendChild(qtyInput);
+        tr.appendChild(qtyTd);
+
+        const costTd = document.createElement('td');
+        costTd.className = 'cost-cell';
+        const costInput = document.createElement('input');
+        costInput.type = 'number';
+        costInput.placeholder = '0';
+        costInput.value = rec.cost || '';
+        costInput.addEventListener('input', (e) => { rec.cost = parseFloat(e.target.value) || 0; updateTotals(); });
+        costTd.appendChild(costInput);
+        tr.appendChild(costTd);
+
+        const storageTd = document.createElement('td');
+        storageTd.className = 'cost-cell';
+        const storageInput = document.createElement('input');
+        storageInput.type = 'number';
+        storageInput.placeholder = '0';
+        storageInput.value = rec.storage || '';
+        storageInput.addEventListener('input', (e) => { rec.storage = parseFloat(e.target.value) || 0; updateTotals(); });
+        storageTd.appendChild(storageInput);
+        tr.appendChild(storageTd);
+
+        const transportTd = document.createElement('td');
+        transportTd.className = 'cost-cell';
+        const transportInput = document.createElement('input');
+        transportInput.type = 'number';
+        transportInput.placeholder = '0';
+        transportInput.value = rec.transport || '';
+        transportInput.addEventListener('input', (e) => { rec.transport = parseFloat(e.target.value) || 0; updateTotals(); });
+        transportTd.appendChild(transportInput);
+        tr.appendChild(transportTd);
+
+        const totalTd = document.createElement('td');
+        totalTd.className = 'total-cell';
+        totalTd.textContent = formatNumber(recordCost(rec)) + '원';
+        tr.appendChild(totalTd);
+
+        const actionTd = document.createElement('td');
+        actionTd.className = 'action-cell';
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'btn-ghost btn-small';
+        rmBtn.textContent = '×';
+        rmBtn.title = '이 입고 기록 삭제';
+        rmBtn.onclick = () => removeImportRecord(product.id, idx);
+        actionTd.appendChild(rmBtn);
+        tr.appendChild(actionTd);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      scrollWrap.appendChild(table);
+      card.appendChild(scrollWrap);
+
+      const addRow = document.createElement('div');
+      addRow.className = 'add-row';
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn-ghost btn-small';
+      addBtn.textContent = '+ 입고 기록 추가';
+      addBtn.onclick = () => addImportRecord(product.id);
+      addRow.appendChild(addBtn);
+      card.appendChild(addRow);
+
+      const revenue = product.revenues[periodKey()] || 0;
+      const cost = costForPeriod(product, periodKey());
+      const profit = revenue - cost;
+
+      const foot = document.createElement('div');
+      foot.className = 'product-foot';
+      foot.innerHTML = `<div class="product-total">${currentYear}년 ${currentMonth}월 매출: <b>${formatNumber(revenue)}원</b></div>
+        <div class="product-total">비용 합계: <b class="cost">${formatNumber(cost)}원</b></div>
+        <div class="product-total">영업이익: <b class="profit${profit < 0 ? ' negative' : ''}">${formatNumber(profit)}원</b></div>`;
+      card.appendChild(foot);
+
+      listEl.appendChild(card);
+
+      grandRevenue += revenue;
+      grandCost += cost;
+    });
+
+    const grandProfit = grandRevenue - grandCost;
+    document.getElementById('summaryRevenueLabel').textContent = `${currentYear}년 ${currentMonth}월 전체 매출`;
+    document.getElementById('summaryRevenueValue').textContent = formatNumber(grandRevenue) + '원';
+    document.getElementById('summaryCostLabel').textContent = `${currentYear}년 ${currentMonth}월 전체 비용`;
+    document.getElementById('summaryCostValue').textContent = formatNumber(grandCost) + '원';
+    document.getElementById('summaryProfitLabel').textContent = `${currentYear}년 ${currentMonth}월 전체 영업이익`;
+    const profitValueEl = document.getElementById('summaryProfitValue');
+    profitValueEl.textContent = formatNumber(grandProfit) + '원';
+    profitValueEl.classList.toggle('negative', grandProfit < 0);
+  }
+
+  function updateTotals() {
+    let grandRevenue = 0;
+    let grandCost = 0;
+
+    document.querySelectorAll('.product-card').forEach(card => {
+      const productId = parseInt(card.dataset.productId, 10);
+      const product = products.find(p => p.id === productId);
+
+      const rows = card.querySelectorAll('tbody tr');
+      product.imports.forEach((rec, idx) => {
+        const totalCell = rows[idx] ? rows[idx].querySelector('.total-cell') : null;
+        if (totalCell) totalCell.textContent = formatNumber(recordCost(rec)) + '원';
+      });
+
+      const revenue = product.revenues[periodKey()] || 0;
+      const cost = costForPeriod(product, periodKey());
+      const profit = revenue - cost;
+
+      const footEl = card.querySelector('.product-foot');
+      footEl.innerHTML = `<div class="product-total">${currentYear}년 ${currentMonth}월 매출: <b>${formatNumber(revenue)}원</b></div>
+        <div class="product-total">비용 합계: <b class="cost">${formatNumber(cost)}원</b></div>
+        <div class="product-total">영업이익: <b class="profit${profit < 0 ? ' negative' : ''}">${formatNumber(profit)}원</b></div>`;
+
+      grandRevenue += revenue;
+      grandCost += cost;
+    });
+
+    const grandProfit = grandRevenue - grandCost;
+    document.getElementById('summaryRevenueValue').textContent = formatNumber(grandRevenue) + '원';
+    document.getElementById('summaryCostValue').textContent = formatNumber(grandCost) + '원';
+    const profitValueEl = document.getElementById('summaryProfitValue');
+    profitValueEl.textContent = formatNumber(grandProfit) + '원';
+    profitValueEl.classList.toggle('negative', grandProfit < 0);
+  }
+
+  // init
+  initYearSelect();
+  initMonthSelect();
+  addProduct('제품 B (수입)');
+</script>
+</body>
+</html>
