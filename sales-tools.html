@@ -1,0 +1,2398 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>영업 관리 도구 (판매관리 · 영업이익 계산기)</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --card2: #1d212b;
+    --border: #2a2e38;
+    --text: #eef0f3;
+    --muted: #9aa1ad;
+    --accent: #4f8cff;
+    --accent-hover: #6ba0ff;
+    --danger: #ff6b6b;
+    --positive: #46c98f;
+    --warn: #ffb648;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    padding: 32px 16px 80px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 16px; }
+  p.desc { color: var(--muted); font-size: 13px; margin: 0 0 24px; line-height: 1.6; }
+
+  .tab-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: var(--muted);
+    padding: 10px 4px;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: -1px;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .month-select {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  select, input[type="text"], input[type="number"], input[type="date"] {
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+    width: 100%;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 14px;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(255,107,107,0.35); }
+  .btn-danger:hover { background: rgba(255,107,107,0.1); }
+  .btn-small { padding: 5px 8px; font-size: 12px; }
+
+  .summary {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .summary .block .label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .summary .block .value { font-size: 22px; font-weight: 700; }
+  .summary .block .value.revenue { color: var(--positive); }
+  .summary .block .value.cost { color: var(--danger); }
+  .summary .block .value.profit { color: var(--positive); }
+  .summary .block .value.profit.negative { color: var(--danger); }
+  /* 영업이익 탭에서는 매출 값이 "긍정 강조"가 아니라 일반 텍스트여야 하므로 이 탭 안에서만 덮어씁니다 */
+  #profitTab .summary .block .value.revenue { color: var(--text); }
+
+  .product-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .product-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  /* 영업이익 탭 카드는 매출 힌트 줄이 추가로 들어가서 살짝 더 여유를 둡니다 */
+  #profitTab .product-head { margin-bottom: 14px; }
+
+  .product-head .name-field {
+    flex: 1;
+    min-width: 160px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .stock-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .stock-field input {
+    width: 90px;
+  }
+
+  .stock-status {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    line-height: 1.6;
+  }
+  .stock-status b { color: var(--text); }
+  .stock-status b.low { color: var(--danger); }
+  .stock-status b.ok { color: var(--positive); }
+
+  .import-section {
+    margin-bottom: 14px;
+    padding: 12px;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .import-title {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .lot-name-cell input { min-width: 100px; }
+  .lot-remaining-cell { font-weight: 600; }
+  .lot-remaining-cell.low { color: var(--danger); }
+  .lot-remaining-cell.warn { color: var(--warn); }
+  .lot-cell select { min-width: 170px; font-size: 12px; }
+  .lot-fefo-hint {
+    font-size: 10px;
+    color: var(--warn);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+  .lot-summary-section table { font-size: 12px; }
+  .lot-empty {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .lot-status-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .lot-status-badge.ok { background: rgba(70, 201, 143, 0.12); color: var(--positive); }
+  .lot-status-badge.warn { background: rgba(255, 182, 72, 0.14); color: var(--warn); }
+  .lot-status-badge.low { background: rgba(255, 107, 107, 0.12); color: var(--danger); }
+  .lot-status-badge.muted { background: rgba(255, 255, 255, 0.06); color: var(--muted); }
+
+  .paste-section {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--card2);
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+  }
+  .paste-title {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .paste-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+  .paste-section textarea {
+    width: 100%;
+    min-height: 70px;
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    outline: none;
+    resize: vertical;
+    margin-bottom: 8px;
+  }
+  .paste-section textarea:focus { border-color: var(--accent); }
+  .paste-status {
+    font-size: 12px;
+    margin-top: 8px;
+    color: var(--positive);
+  }
+  .paste-status.error { color: var(--danger); }
+
+  .ai-section {
+    margin-top: 24px;
+    padding: 18px 20px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 12px;
+  }
+  .ai-section h2 {
+    font-size: 14px;
+    margin: 0 0 4px;
+  }
+  .ai-hint {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .ai-warning {
+    font-size: 11px;
+    color: var(--danger);
+    background: rgba(255, 90, 90, 0.08);
+    border: 1px solid rgba(255, 90, 90, 0.25);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+  .ai-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .ai-controls select { width: auto; }
+  .ai-section textarea {
+    width: 100%;
+    min-height: 220px;
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-size: 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    outline: none;
+    resize: vertical;
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+  .ai-section textarea:focus { border-color: var(--accent); }
+  .ai-output-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .ai-prompt-status {
+    font-size: 12px;
+    color: var(--positive);
+  }
+  .ai-prompt-status.error { color: var(--danger); }
+  .ai-live-section {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border);
+  }
+  .ai-summary-result {
+    margin-top: 10px;
+    padding: 12px 14px;
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+
+  .revenue-field {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .revenue-input-row { display: flex; align-items: center; gap: 6px; }
+  .revenue-input-row input { width: 130px; }
+  .revenue-hint-row { display: flex; align-items: center; gap: 8px; }
+  .revenue-hint { font-size: 11px; color: var(--muted); }
+  .revenue-hint.muted-hint { font-style: italic; }
+
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 820px; }
+  th, td { text-align: left; padding: 6px 5px; font-size: 13px; vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td.idx-cell { width: 24px; color: var(--muted); text-align: center; }
+  td.name-cell { width: 13%; }
+  td.date-cell { width: 12%; }
+  td.price-cell { width: 12%; }
+  td.qty-cell { width: 10%; }
+  td.revenue-cell { width: 14%; color: var(--positive); font-weight: 600; white-space: nowrap; }
+  td.cost-cell { width: 15%; }
+  td.total-cell { width: 15%; color: var(--danger); font-weight: 600; white-space: nowrap; }
+  td.action-cell { width: 40px; text-align: center; }
+  table.master-table { min-width: 0; }
+  table.master-table input { width: 100%; }
+  td.master-name-cell { width: 40%; }
+  td.master-supplier-cell { width: 25%; }
+  td.master-origin-cell { width: 25%; }
+
+  .add-customer-row { margin-top: 10px; }
+  .add-row { margin-top: 10px; }
+
+  .product-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .product-total { font-size: 13px; color: var(--muted); }
+  .product-total b { color: var(--text); }
+  .product-total b.revenue { color: var(--positive); }
+  .product-total b.cost { color: var(--danger); }
+  .product-total b.profit { color: var(--positive); }
+  .product-total b.profit.negative { color: var(--danger); }
+
+  .note {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 0 0 24px;
+    text-align: left;
+    line-height: 1.6;
+  }
+
+  .login-screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    z-index: 100;
+    padding: 24px;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 360px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+  }
+  .login-card h1 { font-size: 18px; margin: 0 0 6px; }
+  .login-desc { color: var(--muted); font-size: 13px; margin: 0 0 20px; line-height: 1.5; }
+  .login-card label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
+  .login-card input {
+    width: 100%;
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--text);
+    outline: none;
+  }
+  .login-card input:focus { border-color: var(--accent); }
+  .login-card .btn-primary { width: 100%; margin-top: 20px; padding: 12px; font-size: 14px; }
+  .login-status { margin-top: 12px; font-size: 12px; color: var(--muted); min-height: 16px; line-height: 1.5; }
+  .login-status.error { color: var(--danger); }
+
+  .account-bar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .save-status { font-size: 12px; color: var(--muted); }
+  .save-status.error { color: var(--danger); }
+  .save-status.ok { color: var(--positive); }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <h1>로그인</h1>
+    <p class="login-desc">이 도구는 로그인한 사용자만 사용할 수 있습니다. 등록된 계정으로 로그인해주세요.</p>
+    <label for="loginEmail">이메일</label>
+    <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="username">
+    <label for="loginPassword">비밀번호</label>
+    <input type="password" id="loginPassword" placeholder="비밀번호" autocomplete="current-password">
+    <button class="btn-primary" id="loginBtn" onclick="handleLogin()">로그인</button>
+    <div id="loginStatus" class="login-status"></div>
+  </div>
+</div>
+
+<div class="wrap" id="appScreen" style="display:none;">
+  <div class="account-bar">
+    <span id="accountEmail"></span>
+    <button class="btn-ghost btn-small" onclick="handleLogout()">로그아웃</button>
+  </div>
+
+  <h1>영업 관리 도구</h1>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tabBtnTracker" onclick="switchTab('tracker')">판매관리</button>
+    <button class="tab-btn" id="tabBtnProfit" onclick="switchTab('profit')">영업이익 계산기</button>
+    <button class="tab-btn" id="tabBtnMaster" onclick="switchTab('master')">제품 마스터</button>
+  </div>
+
+  <p class="note">※ 로그인 계정별로 데이터를 저장합니다. 각 화면 위쪽 "저장" 버튼을 눌러야 실제로 저장되며, 누르지 않고 새로고침하면 마지막 저장 시점 이후 입력한 내용은 사라져요. 판매관리·영업이익 탭의 제품명은 "제품 마스터" 탭에 등록된 목록 중에서 고르는 방식이라, 이름이 완전히 같아서 두 화면의 매출이 정확하게 연동됩니다.</p>
+
+  <!-- ==================== 판매관리 탭 ==================== -->
+  <div id="trackerTab">
+    <p class="desc">제품마다 고객을 등록(기본 5명, 필요하면 추가)하고, 주문일자·공급일자·공급단가·판매량을 입력하면 매출금액이 자동 계산됩니다. 제품을 국내/수입으로 구분해서, 수입 제품만 입고 기록과 재고 현황(기초재고+입고−판매=기말재고, 전달 재고 자동 이월)을 관리합니다. 한 번 입력한 고객명은 기억해뒀다가 다른 칸에서 글자를 입력하면 자동완성으로 제안해줍니다. 각 제품 카드 아래의 "엑셀에서 붙여넣기" 칸에 엑셀 표를 복사해서 붙여넣으면 여러 고객을 한 번에 추가할 수 있습니다.</p>
+
+    <div class="toolbar">
+      <div class="month-select">
+        <label style="color:var(--muted); font-size:13px;">조회 년월</label>
+        <select id="yearSelect" onchange="renderAll()" style="width:auto;"></select>
+        <select id="monthSelect" onchange="renderAll()" style="width:auto;"></select>
+      </div>
+      <div class="toolbar-actions">
+        <span id="saveStatus" class="save-status"></span>
+        <button class="btn-primary btn-small" onclick="saveUserData()">저장</button>
+        <button class="btn-primary" onclick="addProduct()">+ 제품 추가</button>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="block">
+        <div class="label" id="summaryQtyLabel">이번 달 전체 판매량</div>
+        <div class="value" id="summaryQtyValue">0</div>
+      </div>
+      <div class="block">
+        <div class="label" id="summaryRevenueLabel">이번 달 전체 매출금액</div>
+        <div class="value revenue" id="summaryRevenueValue">0원</div>
+      </div>
+    </div>
+
+    <div id="productList"></div>
+
+    <datalist id="customerNameList"></datalist>
+
+    <div class="ai-section">
+      <h2>AI 리포트 프롬프트 생성</h2>
+      <div class="ai-hint">위에서 집계된 판매량·매출금액(고객명 등 개인·거래처 식별정보는 제외)을 바탕으로, ChatGPT 같은 AI 서비스에 바로 붙여넣을 수 있는 프롬프트를 만들어줍니다. 이 화면은 AI를 직접 호출하지 않으며, 프롬프트만 생성합니다 (API 키 불필요, 안전 버전).</div>
+      <div class="ai-warning">⚠ 생성된 프롬프트에는 제품별 판매량·매출 합계만 들어갑니다. AI 서비스에 붙여넣기 전, 혹시라도 직접 수정해서 고객명·계약조건 등 민감정보를 추가하지 않았는지 다시 한번 확인해주세요.</div>
+      <div class="ai-controls">
+        <label style="color:var(--muted); font-size:13px;">보고 목적</label>
+        <select id="aiPurposeSelect">
+          <option value="executive">경영진 보고용</option>
+          <option value="team">팀 공유용</option>
+          <option value="risk">리스크 점검용</option>
+        </select>
+        <button class="btn-primary btn-small" onclick="buildAiPrompt()">프롬프트 생성</button>
+      </div>
+      <textarea id="aiPromptOutput" readonly placeholder="여기에 생성된 프롬프트가 표시됩니다. 생성 후 복사해서 ChatGPT 등에 붙여넣으세요."></textarea>
+      <div class="ai-output-row">
+        <div id="aiPromptStatus" class="ai-prompt-status"></div>
+        <button class="btn-ghost btn-small" id="aiCopyBtn" onclick="copyAiPrompt()">프롬프트 복사</button>
+      </div>
+
+      <div class="ai-live-section">
+        <div class="ai-hint">위와 같은 내용을 사람이 복사해서 붙여넣지 않아도, 아래 버튼으로 AI가 직접 읽고 바로 요약을 보여줍니다. (Claude API 사용 — 호출당 소량의 비용이 발생해요.)</div>
+        <div class="ai-controls">
+          <button class="btn-primary btn-small" id="aiSummaryBtn" onclick="runAiSummary()">AI 요약 바로 보기</button>
+        </div>
+        <div id="aiSummaryStatus" class="ai-prompt-status"></div>
+        <div id="aiSummaryResult" class="ai-summary-result" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 영업이익 계산기 탭 ==================== -->
+  <div id="profitTab" style="display:none;">
+    <p class="desc">수입 건(입고 기록)마다 수입원가·창고보관비·운송비를 입력하고, 그 달의 매출을 입력하면<br>"이번 달 매출 − 이번 달 발생 비용 = 영업이익"을 자동으로 계산합니다. 제품명이 "판매관리" 탭과 같으면, 그쪽에 입력된 매출 합계가 실시간으로 여기 표시되고 "이 값으로 채우기" 버튼으로 바로 가져올 수 있습니다.</p>
+
+    <div class="toolbar">
+      <div class="month-select">
+        <label style="color:var(--muted); font-size:13px;">조회 년월</label>
+        <select id="pcYearSelect" onchange="pcRenderAll()" style="width:auto;"></select>
+        <select id="pcMonthSelect" onchange="pcRenderAll()" style="width:auto;"></select>
+      </div>
+      <div class="toolbar-actions">
+        <span id="pcSaveStatus" class="save-status"></span>
+        <button class="btn-primary btn-small" onclick="pcSaveUserData()">저장</button>
+        <button class="btn-primary" onclick="pcAddProduct()">+ 제품 추가</button>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="block">
+        <div class="label" id="pcSummaryRevenueLabel">이번 달 전체 매출</div>
+        <div class="value revenue" id="pcSummaryRevenueValue">0원</div>
+      </div>
+      <div class="block">
+        <div class="label" id="pcSummaryCostLabel">이번 달 전체 비용</div>
+        <div class="value cost" id="pcSummaryCostValue">0원</div>
+      </div>
+      <div class="block">
+        <div class="label" id="pcSummaryProfitLabel">이번 달 전체 영업이익</div>
+        <div class="value profit" id="pcSummaryProfitValue">0원</div>
+      </div>
+    </div>
+
+    <div id="pcProductList"></div>
+  </div>
+
+  <!-- ==================== 제품 마스터 탭 ==================== -->
+  <div id="masterTab" style="display:none;">
+    <p class="desc">여기에 등록한 제품명만 "판매관리"·"영업이익 계산기" 탭의 제품명 선택 목록에 나타납니다. 같은 제품인데 이름 표기가 조금이라도 다르면(띄어쓰기, 오타 등) 두 탭의 매출이 서로 연동되지 않으니, 새 제품을 다루기 전에 먼저 여기에 등록해주세요.</p>
+
+    <div class="toolbar">
+      <div></div>
+      <div class="toolbar-actions">
+        <span id="masterSaveStatus" class="save-status"></span>
+        <button class="btn-primary btn-small" onclick="saveMasterData()">저장</button>
+        <button class="btn-primary" onclick="addMasterEntry()">+ 제품 추가</button>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table class="master-table">
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>제품명</th>
+          <th>공급자</th>
+          <th>원산지</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="masterTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ================== 로그인 (Supabase Auth) — 두 탭 공용 ==================
+  const SUPABASE_URL = 'https://gotfguvfzpuxeixjcvao.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_B7C64nu7bAudWoA7-EjTXw_-jMe-wME';
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  async function showApp(email, userId) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appScreen').style.display = 'block';
+    document.getElementById('accountEmail').textContent = email;
+    // 제품 마스터 목록을 가장 먼저 불러와야, 판매관리·영업이익 탭의 제품명 선택 목록이 처음부터 정확하게 표시됩니다.
+    await loadMasterData(userId);
+    // 판매관리 데이터를 그 다음 불러와야, 영업이익 탭의 매출 연동 힌트가 처음부터 정확하게 표시됩니다.
+    await loadUserData(userId);
+    await pcLoadUserData(userId);
+  }
+
+  function showLogin() {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appScreen').style.display = 'none';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('saveStatus').textContent = '';
+    document.getElementById('pcSaveStatus').textContent = '';
+    document.getElementById('masterSaveStatus').textContent = '';
+  }
+
+  async function checkSession() {
+    const { data } = await supabaseClient.auth.getSession();
+    if (data.session) {
+      showApp(data.session.user.email, data.session.user.id);
+    } else {
+      showLogin();
+    }
+  }
+
+  async function handleLogin() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const statusEl = document.getElementById('loginStatus');
+    const btn = document.getElementById('loginBtn');
+
+    statusEl.textContent = '';
+    statusEl.className = 'login-status';
+
+    if (!email || !password) {
+      statusEl.textContent = '이메일과 비밀번호를 입력해주세요.';
+      statusEl.className = 'login-status error';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '로그인 중...';
+
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+    btn.disabled = false;
+    btn.textContent = '로그인';
+
+    if (error) {
+      statusEl.textContent = '로그인 실패: 이메일 또는 비밀번호를 확인해주세요.';
+      statusEl.className = 'login-status error';
+      return;
+    }
+
+    showApp(data.user.email, data.user.id);
+  }
+
+  async function handleLogout() {
+    await supabaseClient.auth.signOut();
+    showLogin();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleLogin();
+    });
+  });
+
+  // ================== 탭 전환 ==================
+  function switchTab(name) {
+    document.getElementById('trackerTab').style.display = name === 'tracker' ? 'block' : 'none';
+    document.getElementById('profitTab').style.display = name === 'profit' ? 'block' : 'none';
+    document.getElementById('masterTab').style.display = name === 'master' ? 'block' : 'none';
+    document.getElementById('tabBtnTracker').classList.toggle('active', name === 'tracker');
+    document.getElementById('tabBtnProfit').classList.toggle('active', name === 'profit');
+    document.getElementById('tabBtnMaster').classList.toggle('active', name === 'master');
+    // 다른 탭으로 올 때마다 최신 데이터를 반영해 다시 그립니다 (같은 페이지라 DB 조회 없이 바로 최신값).
+    if (name === 'profit') pcRenderAll();
+    if (name === 'tracker') renderAll();
+  }
+
+  // ================== 공용 숫자 포맷 ==================
+  function formatNumber(n) {
+    return Math.round(n || 0).toLocaleString('ko-KR');
+  }
+
+  function formatQty(n) {
+    return formatNumber(n) + ' Kg';
+  }
+
+  // ==========================================================================
+  // ========================= 제품 마스터 탭 로직 (공용) =========================
+  // ==========================================================================
+  // 판매관리·영업이익 두 탭에서 제품명을 "직접 입력"이 아니라 여기 등록된 목록 중에서
+  // "고르게" 만들어서, 표기 차이(띄어쓰기·오타 등) 때문에 두 탭의 매출 연동이 끊기는 문제를 막습니다.
+  let masterProducts = [];
+  let masterIdSeq = 1;
+
+  function addMasterEntry(name, supplier, origin) {
+    masterProducts.push({
+      id: masterIdSeq++,
+      name: name || '',
+      supplier: supplier || '',
+      origin: origin || ''
+    });
+    renderMasterTab();
+    renderAll();
+    pcRenderAll();
+  }
+
+  function removeMasterEntry(id) {
+    masterProducts = masterProducts.filter(m => m.id !== id);
+    renderMasterTab();
+    renderAll();
+    pcRenderAll();
+  }
+
+  function renderMasterTab() {
+    const body = document.getElementById('masterTableBody');
+    if (!body) return;
+    body.innerHTML = '';
+
+    masterProducts.forEach((entry, idx) => {
+      const tr = document.createElement('tr');
+
+      const idxTd = document.createElement('td');
+      idxTd.className = 'idx-cell';
+      idxTd.textContent = idx + 1;
+      tr.appendChild(idxTd);
+
+      const nameTd = document.createElement('td');
+      nameTd.className = 'master-name-cell';
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.placeholder = '예: 요소(UREA) 46%';
+      nameInput.value = entry.name;
+      nameInput.addEventListener('input', (e) => {
+        entry.name = e.target.value;
+      });
+      nameInput.addEventListener('change', () => {
+        // 이름이 최종 확정된 시점(포커스 해제)에 다른 탭의 선택 목록도 갱신
+        renderAll();
+        pcRenderAll();
+      });
+      nameTd.appendChild(nameInput);
+      tr.appendChild(nameTd);
+
+      const supplierTd = document.createElement('td');
+      supplierTd.className = 'master-supplier-cell';
+      const supplierInput = document.createElement('input');
+      supplierInput.type = 'text';
+      supplierInput.placeholder = '공급자';
+      supplierInput.value = entry.supplier;
+      supplierInput.addEventListener('input', (e) => { entry.supplier = e.target.value; });
+      supplierTd.appendChild(supplierInput);
+      tr.appendChild(supplierTd);
+
+      const originTd = document.createElement('td');
+      originTd.className = 'master-origin-cell';
+      const originInput = document.createElement('input');
+      originInput.type = 'text';
+      originInput.placeholder = '원산지';
+      originInput.value = entry.origin;
+      originInput.addEventListener('input', (e) => { entry.origin = e.target.value; });
+      originTd.appendChild(originInput);
+      tr.appendChild(originTd);
+
+      const actionTd = document.createElement('td');
+      actionTd.className = 'action-cell';
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'btn-ghost btn-small';
+      rmBtn.textContent = '×';
+      rmBtn.title = '이 제품 삭제';
+      rmBtn.onclick = () => removeMasterEntry(entry.id);
+      actionTd.appendChild(rmBtn);
+      tr.appendChild(actionTd);
+
+      body.appendChild(tr);
+    });
+  }
+
+  // 판매관리·영업이익 탭 공용: 제품명 <select> 하나를 만들어서 돌려줍니다.
+  // currentName: 이 제품 카드가 지금 갖고 있는 제품명(마스터에 없을 수도 있음)
+  // onChange(newName): 사용자가 다른 이름을 고르면 호출
+  function buildProductNameSelect(currentName, onChange) {
+    const select = document.createElement('select');
+    select.className = 'name-field';
+
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = masterProducts.length === 0 ? '(제품 마스터에 먼저 등록해주세요)' : '(제품 선택)';
+    select.appendChild(emptyOpt);
+
+    const namesInMaster = new Set();
+    masterProducts.forEach(entry => {
+      const label = entry.name || '(이름없음)';
+      namesInMaster.add(entry.name);
+      const opt = document.createElement('option');
+      opt.value = entry.name;
+      const meta = [entry.supplier, entry.origin].filter(Boolean).join(' · ');
+      opt.textContent = meta ? `${label} (${meta})` : label;
+      select.appendChild(opt);
+    });
+
+    // 마스터에 없는 기존 제품명(마이그레이션 대상)도 목록에서 사라지지 않도록 표시해줍니다.
+    if (currentName && !namesInMaster.has(currentName)) {
+      const legacyOpt = document.createElement('option');
+      legacyOpt.value = currentName;
+      legacyOpt.textContent = `${currentName} (마스터 미등록 — 확인 필요)`;
+      select.appendChild(legacyOpt);
+    }
+
+    select.value = currentName || '';
+    select.addEventListener('change', (e) => onChange(e.target.value));
+    return select;
+  }
+
+  // ==========================================================================
+  // ============================ 판매관리 탭 로직 ============================
+  // ==========================================================================
+  let products = [];
+  let currentYear = 2026; // default: current year placeholder
+  let currentMonth = 8; // default: current month placeholder
+  let productIdSeq = 1;
+  let lotIdSeq = 1; // 로트 고유 ID 발급용 (로트명이 같아도 서로 구분하기 위함)
+  const DEFAULT_CUSTOMER_COUNT = 5;
+  const YEAR_RANGE = { start: 2024, end: 2035 };
+  let knownCustomerNames = new Set(); // 한 번 입력된 고객명을 기억해서 자동완성에 사용
+
+  function registerCustomerName(name) {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return;
+    if (!knownCustomerNames.has(trimmed)) {
+      knownCustomerNames.add(trimmed);
+      refreshCustomerDatalist();
+    }
+  }
+
+  function refreshCustomerDatalist() {
+    const list = document.getElementById('customerNameList');
+    if (!list) return;
+    list.innerHTML = '';
+    knownCustomerNames.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      list.appendChild(opt);
+    });
+  }
+
+  function periodKey() {
+    // 연-월 합쳐서 키로 사용 (같은 월이라도 연도가 다르면 별도 데이터로 관리)
+    return `${currentYear}-${currentMonth}`;
+  }
+
+  function getDefaultDate() {
+    // 조회 년월 선택에 맞춰 기본 날짜를 "선택한 연-월-1일"로 계산 (날짜만 바꿔서 쓰면 됨)
+    const mm = String(currentMonth).padStart(2, '0');
+    return `${currentYear}-${mm}-01`;
+  }
+
+  function makeCustomerSlots(count) {
+    const arr = [];
+    for (let i = 0; i < count; i++) {
+      arr.push({ name: '', orderDate: getDefaultDate(), supplyDate: getDefaultDate(), volumes: {}, prices: {}, lots: {} });
+    }
+    return arr;
+  }
+
+  function makeLotRecord() {
+    return { date: getDefaultDate(), qty: 0, lot: '', mfgDate: '', expDate: '', lotUid: `lot${lotIdSeq++}` };
+  }
+
+  // ---- 로트 관리 헬퍼 ----
+  function computeLotRemaining(product, lotUid) {
+    const rec = (product.imports || []).find(r => r.lotUid === lotUid);
+    if (!rec) return 0;
+    let sold = 0;
+    product.customers.forEach(cust => {
+      Object.keys(cust.lots || {}).forEach(pk => {
+        if (cust.lots[pk] === lotUid) sold += cust.volumes[pk] || 0;
+      });
+    });
+    return (rec.qty || 0) - sold;
+  }
+
+  function getLotSummary(product) {
+    return (product.imports || []).map(rec => ({
+      ...rec,
+      remaining: computeLotRemaining(product, rec.lotUid)
+    })).sort((a, b) => {
+      if (!a.expDate && !b.expDate) return 0;
+      if (!a.expDate) return 1;
+      if (!b.expDate) return -1;
+      return a.expDate.localeCompare(b.expDate);
+    });
+  }
+
+  function suggestFefoLot(product) {
+    const lots = getLotSummary(product).filter(l => l.remaining > 0);
+    return lots[0] || null; // 유통기한이 가장 빠른(그리고 잔여재고가 있는) 로트
+  }
+
+  function lotDaysUntilExpiry(expDate) {
+    if (!expDate) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const exp = new Date(expDate + 'T00:00:00');
+    return Math.round((exp - today) / 86400000);
+  }
+
+  function lotStatusBadge(lot) {
+    if (lot.remaining < 0) return { text: '재고 부족', cls: 'low' };
+    if (lot.remaining === 0) return { text: '소진됨', cls: 'muted' };
+    const days = lotDaysUntilExpiry(lot.expDate);
+    if (days !== null && days < 0) return { text: '유통기한 지남', cls: 'low' };
+    if (days !== null && days <= 30) return { text: `유통기한 ${days}일 남음`, cls: 'warn' };
+    return { text: '정상', cls: 'ok' };
+  }
+
+  function renderLotSummaryBody(container, product) {
+    const lots = getLotSummary(product);
+    if (lots.length === 0) {
+      container.innerHTML = '<div class="lot-empty">등록된 로트가 없어요. 위 "입고(로트) 기록"에 로트를 추가해주세요.</div>';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.innerHTML = `<thead><tr>
+      <th>로트번호</th>
+      <th>제조일자</th>
+      <th>유통기한</th>
+      <th>입고량(Kg)</th>
+      <th>잔여재고(Kg)</th>
+      <th>상태</th>
+    </tr></thead>`;
+    const tbody = document.createElement('tbody');
+
+    const fefoLotUid = (lots.find(l => l.remaining > 0) || {}).lotUid;
+
+    lots.forEach(lot => {
+      const tr = document.createElement('tr');
+      const badge = lotStatusBadge(lot);
+
+      const nameTd = document.createElement('td');
+      nameTd.textContent = (lot.lot || '(이름없음)') + (lot.lotUid === fefoLotUid ? ' ★다음 출고' : '');
+      tr.appendChild(nameTd);
+
+      const mfgTd = document.createElement('td');
+      mfgTd.textContent = lot.mfgDate || '-';
+      tr.appendChild(mfgTd);
+
+      const expTd = document.createElement('td');
+      expTd.textContent = lot.expDate || '-';
+      tr.appendChild(expTd);
+
+      const qtyTd = document.createElement('td');
+      qtyTd.textContent = formatQty(lot.qty || 0);
+      tr.appendChild(qtyTd);
+
+      const remainTd = document.createElement('td');
+      remainTd.textContent = formatQty(lot.remaining);
+      tr.appendChild(remainTd);
+
+      const statusTd = document.createElement('td');
+      const badgeEl = document.createElement('span');
+      badgeEl.className = `lot-status-badge ${badge.cls}`;
+      badgeEl.textContent = badge.text;
+      statusTd.appendChild(badgeEl);
+      tr.appendChild(statusTd);
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    container.innerHTML = '';
+    container.appendChild(table);
+  }
+
+  function addProduct(name, sourceType) {
+    const type = sourceType || 'domestic';
+    products.push({
+      id: productIdSeq++,
+      name: name || `제품 ${products.length + 1}`,
+      sourceType: type, // 'domestic'(국내 구매→즉시 전량 공급) or 'import'(수입→창고 보관 후 순차 공급)
+      initialStock: 0, // 추적을 시작하는 시점(YEAR_RANGE.start년 1월 이전)의 재고
+      imports: type === 'import' ? [makeLotRecord()] : [], // {date, qty, lot, mfgDate, expDate, lotUid} 입고(로트) 기록
+      customers: makeCustomerSlots(DEFAULT_CUSTOMER_COUNT)
+    });
+    renderAll();
+  }
+
+  function removeProduct(id) {
+    products = products.filter(p => p.id !== id);
+    renderAll();
+  }
+
+  function addCustomer(productId) {
+    const product = products.find(p => p.id === productId);
+    product.customers.push({ name: '', orderDate: getDefaultDate(), supplyDate: getDefaultDate(), volumes: {}, prices: {}, lots: {} });
+    renderAll();
+  }
+
+  function removeCustomer(productId, idx) {
+    const product = products.find(p => p.id === productId);
+    product.customers.splice(idx, 1);
+    renderAll();
+  }
+
+  function normalizeDate(str) {
+    // 엑셀에서 복사한 다양한 날짜 표기("2026-08-15", "2026.8.15", "2026/08/15")를
+    // "YYYY-MM-DD"로 변환. 인식 실패 시 현재 조회월 기본값을 사용.
+    if (!str) return getDefaultDate();
+    const m = String(str).trim().match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+    if (!m) return getDefaultDate();
+    const yyyy = m[1];
+    const mm = m[2].padStart(2, '0');
+    const dd = m[3].padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // 붙여넣기(Paste) → 해석(Parse) → 반영(Render) 흐름:
+  // 엑셀에서 "고객명 [탭] 주문일자 [탭] 공급일자 [탭] 공급단가 [탭] 판매량" 순서로 복사한
+  // 여러 줄을 붙여넣으면, 줄마다 새 고객 행으로 추가한다.
+  function applyPaste(productId) {
+    const product = products.find(p => p.id === productId);
+    const textarea = document.getElementById(`pasteArea-${productId}`);
+    const statusEl = document.getElementById(`pasteStatus-${productId}`);
+    const raw = textarea.value;
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+
+    if (lines.length === 0) {
+      statusEl.textContent = '붙여넣은 내용이 없어요. 엑셀에서 표를 복사해서 붙여넣어 주세요.';
+      statusEl.className = 'paste-status error';
+      return;
+    }
+
+    let addedCount = 0;
+    lines.forEach(line => {
+      let cols = line.split('\t');
+      if (cols.length < 2) cols = line.split(','); // 탭이 없으면 쉼표로도 시도
+
+      const name = (cols[0] || '').trim();
+      if (!name) return; // 고객명 없는 줄은 건너뜀
+
+      const orderDate = normalizeDate(cols[1]);
+      const supplyDate = normalizeDate(cols[2]);
+      const price = parseFloat((cols[3] || '').replace(/[^0-9.-]/g, '')) || 0;
+      const qty = parseFloat((cols[4] || '').replace(/[^0-9.-]/g, '')) || 0;
+
+      const lots = {};
+      if (product.sourceType === 'import' && qty > 0) {
+        const suggested = suggestFefoLot(product);
+        if (suggested) lots[periodKey()] = suggested.lotUid;
+      }
+
+      product.customers.push({
+        name, orderDate, supplyDate,
+        volumes: { [periodKey()]: qty },
+        prices: { [periodKey()]: price },
+        lots
+      });
+      registerCustomerName(name);
+      addedCount++;
+    });
+
+    if (addedCount === 0) {
+      statusEl.textContent = '고객명이 인식되지 않았어요. 첫 번째 칸에 고객명이 있는지 확인해주세요.';
+      statusEl.className = 'paste-status error';
+      return;
+    }
+
+    textarea.value = '';
+    renderAll();
+    // renderAll이 화면을 다시 그리므로, 다시 그려진 상태 문구에 결과를 표시
+    setTimeout(() => {
+      const newStatusEl = document.getElementById(`pasteStatus-${productId}`);
+      if (newStatusEl) {
+        newStatusEl.textContent = `${addedCount}명의 고객을 추가했어요.`;
+        newStatusEl.className = 'paste-status';
+      }
+    }, 0);
+  }
+
+  function addImportRecord(productId) {
+    const product = products.find(p => p.id === productId);
+    product.imports.push(makeLotRecord());
+    renderAll();
+  }
+
+  function removeImportRecord(productId, idx) {
+    const product = products.find(p => p.id === productId);
+    product.imports.splice(idx, 1);
+    renderAll();
+  }
+
+  function periodOfDate(dateStr) {
+    if (!dateStr) return null;
+    const parts = dateStr.split('-');
+    if (parts.length < 2) return null;
+    return `${parseInt(parts[0], 10)}-${parseInt(parts[1], 10)}`;
+  }
+
+  function sumImportsForPeriod(product, pk) {
+    return (product.imports || []).reduce((sum, rec) => {
+      return periodOfDate(rec.date) === pk ? sum + (rec.qty || 0) : sum;
+    }, 0);
+  }
+
+  function sumSalesForPeriod(product, pk) {
+    return product.customers.reduce((sum, cust) => sum + (cust.volumes[pk] || 0), 0);
+  }
+
+  // 최초재고에서 시작해서 YEAR_RANGE.start년 1월부터 목표 연월까지 월별로
+  // (기초재고 + 입고 - 판매 = 기말재고)를 이어 계산해서 재고를 추적합니다.
+  function computeStockChain(product, targetYear, targetMonth) {
+    let running = product.initialStock || 0;
+    let result = { opening: running, imported: 0, sold: 0, ending: running };
+    outer:
+    for (let y = YEAR_RANGE.start; y <= targetYear; y++) {
+      const mEnd = (y === targetYear) ? targetMonth : 12;
+      for (let m = 1; m <= mEnd; m++) {
+        const pk = `${y}-${m}`;
+        const opening = running;
+        const imported = sumImportsForPeriod(product, pk);
+        const sold = sumSalesForPeriod(product, pk);
+        const ending = opening + imported - sold;
+        running = ending;
+        if (y === targetYear && m === targetMonth) {
+          result = { opening, imported, sold, ending };
+          break outer;
+        }
+      }
+    }
+    return result;
+  }
+
+  function initYearSelect() {
+    const sel = document.getElementById('yearSelect');
+    for (let y = YEAR_RANGE.start; y <= YEAR_RANGE.end; y++) {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y + '년';
+      if (y === currentYear) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function initMonthSelect() {
+    const sel = document.getElementById('monthSelect');
+    for (let m = 1; m <= 12; m++) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m + '월';
+      if (m === currentMonth) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function revenueOf(cust) {
+    const qty = cust.volumes[periodKey()] || 0;
+    const price = cust.prices[periodKey()] || 0;
+    return qty * price;
+  }
+
+  function renderAll() {
+    currentYear = parseInt(document.getElementById('yearSelect').value, 10);
+    currentMonth = parseInt(document.getElementById('monthSelect').value, 10);
+    const listEl = document.getElementById('productList');
+    listEl.innerHTML = '';
+
+    let grandQty = 0;
+    let grandRevenue = 0;
+
+    products.forEach(product => {
+      // 입고표(잔여재고)를 그리기 전에 먼저 정리해둡니다.
+      // 1) 로트 고유번호(lotUid)가 없는 예전 입고 기록에 번호를 발급하고,
+      // 2) 로트 기능 추가 이전부터 있던 판매량 중 아직 로트가 안 걸린 것들을 채워둡니다.
+      //    (순서가 바뀌면 방금 채운 값이 입고표의 잔여재고 계산에 반영이 안 되므로 이 순서를 지켜야 합니다.)
+      if (product.sourceType === 'import') {
+        (product.imports || []).forEach(rec => {
+          if (!rec.lotUid) rec.lotUid = `lot${lotIdSeq++}`;
+        });
+        product.customers.forEach(cust => {
+          if (!cust.lots) cust.lots = {};
+          if (!cust.lots[periodKey()] && (cust.volumes[periodKey()] || 0) > 0) {
+            const autoAssign = suggestFefoLot(product);
+            if (autoAssign) cust.lots[periodKey()] = autoAssign.lotUid;
+          }
+        });
+      }
+
+      const card = document.createElement('div');
+      card.className = 'product-card';
+      card.dataset.productId = product.id;
+
+      const head = document.createElement('div');
+      head.className = 'product-head';
+
+      const nameInput = buildProductNameSelect(product.name, (newName) => {
+        product.name = newName;
+        updateTotals();
+      });
+      head.appendChild(nameInput);
+
+      const typeSelect = document.createElement('select');
+      typeSelect.style.width = 'auto';
+      typeSelect.innerHTML = `
+        <option value="domestic">국내(재고관리 불필요)</option>
+        <option value="import">수입(재고관리 필요)</option>
+      `;
+      typeSelect.value = product.sourceType;
+      typeSelect.addEventListener('change', (e) => {
+        product.sourceType = e.target.value;
+        renderAll();
+      });
+      head.appendChild(typeSelect);
+
+      if (product.sourceType === 'import') {
+        const stockField = document.createElement('div');
+        stockField.className = 'stock-field';
+        const stockLabel = document.createElement('span');
+        stockLabel.textContent = `최초재고(Kg, ${YEAR_RANGE.start}년 이전)`;
+        const stockInput = document.createElement('input');
+        stockInput.type = 'number';
+        stockInput.placeholder = '0';
+        stockInput.value = product.initialStock || '';
+        stockInput.addEventListener('input', (e) => {
+          product.initialStock = parseFloat(e.target.value) || 0;
+          updateTotals();
+        });
+        stockField.appendChild(stockLabel);
+        stockField.appendChild(stockInput);
+        head.appendChild(stockField);
+      }
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-danger';
+      delBtn.textContent = '제품 삭제';
+      delBtn.onclick = () => removeProduct(product.id);
+      head.appendChild(delBtn);
+
+      card.appendChild(head);
+
+      let stockStatus = null;
+      if (product.sourceType === 'import') {
+        stockStatus = document.createElement('div');
+        stockStatus.className = 'stock-status';
+        card.appendChild(stockStatus);
+
+        const importSection = document.createElement('div');
+        importSection.className = 'import-section';
+
+        const importTitle = document.createElement('div');
+        importTitle.className = 'import-title';
+        importTitle.textContent = '입고(로트) 기록 (로트번호 · 제조일자 · 유통기한 · 수입물량)';
+        importSection.appendChild(importTitle);
+
+        const importScroll = document.createElement('div');
+        importScroll.className = 'table-scroll';
+        const importTable = document.createElement('table');
+        importTable.innerHTML = `<thead><tr>
+          <th class="idx-cell">#</th>
+          <th>로트번호</th>
+          <th>수입일자</th>
+          <th>제조일자</th>
+          <th>유통기한</th>
+          <th>수입물량(Kg)</th>
+          <th>잔여재고(Kg)</th>
+          <th></th>
+        </tr></thead>`;
+        const importBody = document.createElement('tbody');
+        importBody.className = 'lot-import-body';
+        importBody.dataset.productId = product.id;
+
+        product.imports.forEach((rec, idx) => {
+          if (!rec.lotUid) rec.lotUid = `lot${lotIdSeq++}`; // 예전 저장 데이터 호환
+          const tr = document.createElement('tr');
+          tr.dataset.lotUid = rec.lotUid;
+
+          const idxTd = document.createElement('td');
+          idxTd.className = 'idx-cell';
+          idxTd.textContent = idx + 1;
+          tr.appendChild(idxTd);
+
+          const lotTd = document.createElement('td');
+          lotTd.className = 'lot-name-cell';
+          const lotInput = document.createElement('input');
+          lotInput.type = 'text';
+          lotInput.placeholder = '예: LOT2508A';
+          lotInput.value = rec.lot || '';
+          lotInput.addEventListener('input', (e) => {
+            rec.lot = e.target.value;
+            updateTotals();
+          });
+          lotTd.appendChild(lotInput);
+          tr.appendChild(lotTd);
+
+          const dateTd = document.createElement('td');
+          dateTd.className = 'date-cell';
+          const dateInput = document.createElement('input');
+          dateInput.type = 'date';
+          dateInput.value = rec.date;
+          dateInput.addEventListener('change', (e) => {
+            rec.date = e.target.value;
+            renderAll();
+          });
+          dateTd.appendChild(dateInput);
+          tr.appendChild(dateTd);
+
+          const mfgTd = document.createElement('td');
+          mfgTd.className = 'date-cell';
+          const mfgInput = document.createElement('input');
+          mfgInput.type = 'date';
+          mfgInput.value = rec.mfgDate || '';
+          mfgInput.addEventListener('change', (e) => {
+            rec.mfgDate = e.target.value;
+            updateTotals();
+          });
+          mfgTd.appendChild(mfgInput);
+          tr.appendChild(mfgTd);
+
+          const expTd = document.createElement('td');
+          expTd.className = 'date-cell';
+          const expInput = document.createElement('input');
+          expInput.type = 'date';
+          expInput.value = rec.expDate || '';
+          expInput.addEventListener('change', (e) => {
+            rec.expDate = e.target.value;
+            renderAll(); // 유통기한이 바뀌면 FEFO 추천/정렬이 바뀌므로 전체 재계산
+          });
+          expTd.appendChild(expInput);
+          tr.appendChild(expTd);
+
+          const qtyTd = document.createElement('td');
+          qtyTd.className = 'qty-cell';
+          const qtyInput = document.createElement('input');
+          qtyInput.type = 'number';
+          qtyInput.placeholder = '0';
+          qtyInput.value = rec.qty || '';
+          qtyInput.addEventListener('input', (e) => {
+            rec.qty = parseFloat(e.target.value) || 0;
+            updateTotals();
+          });
+          qtyTd.appendChild(qtyInput);
+          tr.appendChild(qtyTd);
+
+          const remainTd = document.createElement('td');
+          remainTd.className = 'lot-remaining-cell';
+          const remaining = computeLotRemaining(product, rec.lotUid);
+          remainTd.textContent = formatQty(remaining);
+          if (remaining < 0) remainTd.classList.add('low');
+          else if (remaining > 0 && lotDaysUntilExpiry(rec.expDate) !== null && lotDaysUntilExpiry(rec.expDate) <= 30) remainTd.classList.add('warn');
+          tr.appendChild(remainTd);
+
+          const actionTd = document.createElement('td');
+          actionTd.className = 'action-cell';
+          const rmBtn = document.createElement('button');
+          rmBtn.className = 'btn-ghost btn-small';
+          rmBtn.textContent = '×';
+          rmBtn.title = '이 입고 기록 삭제';
+          rmBtn.onclick = () => removeImportRecord(product.id, idx);
+          actionTd.appendChild(rmBtn);
+          tr.appendChild(actionTd);
+
+          importBody.appendChild(tr);
+        });
+
+        importTable.appendChild(importBody);
+        importScroll.appendChild(importTable);
+        importSection.appendChild(importScroll);
+
+        const addImportRow = document.createElement('div');
+        addImportRow.className = 'add-customer-row';
+        const addImportBtn = document.createElement('button');
+        addImportBtn.className = 'btn-ghost btn-small';
+        addImportBtn.textContent = '+ 입고(로트) 기록 추가';
+        addImportBtn.onclick = () => addImportRecord(product.id);
+        addImportRow.appendChild(addImportBtn);
+        importSection.appendChild(addImportRow);
+
+        card.appendChild(importSection);
+
+        // ---- 로트별 재고 현황 (선입선출 확인용) ----
+        const lotSummarySection = document.createElement('div');
+        lotSummarySection.className = 'import-section lot-summary-section';
+        lotSummarySection.dataset.productId = product.id;
+        const lotSummaryTitle = document.createElement('div');
+        lotSummaryTitle.className = 'import-title';
+        lotSummaryTitle.textContent = '로트별 재고 현황 (유통기한이 빠른 순 = 먼저 출고해야 할 순서)';
+        lotSummarySection.appendChild(lotSummaryTitle);
+        const lotSummaryBody = document.createElement('div');
+        lotSummaryBody.className = 'lot-summary-body';
+        lotSummarySection.appendChild(lotSummaryBody);
+        renderLotSummaryBody(lotSummaryBody, product);
+        card.appendChild(lotSummarySection);
+      }
+
+      const scrollWrap = document.createElement('div');
+      scrollWrap.className = 'table-scroll';
+
+      const table = document.createElement('table');
+      table.innerHTML = `<thead><tr>
+        <th class="idx-cell">#</th>
+        <th>고객명</th>
+        <th>주문일자</th>
+        <th>공급일자</th>
+        <th>공급단가(원)</th>
+        ${product.sourceType === 'import' ? '<th>출고 로트</th>' : ''}
+        <th>${currentYear}년 ${currentMonth}월 판매량(Kg)</th>
+        <th>매출금액</th>
+        <th></th>
+      </tr></thead>`;
+      const tbody = document.createElement('tbody');
+      tbody.className = 'customer-body'; // updateTotals()에서 정확히 이 표의 행만 찾기 위한 표식
+
+      let productQty = 0;
+      let productRevenue = 0;
+
+      product.customers.forEach((cust, idx) => {
+        if (!cust.lots) cust.lots = {}; // 예전 저장 데이터 호환
+        // 로트 기능 추가 이전에 이미 입력되어 있던 판매량(이번 조회월)은 로트가 안 걸려있으므로,
+        // 화면에 보여주는 추천 로트를 실제 데이터에도 반영해서 "화면엔 로트가 표시되는데 재고 차감엔 안 잡히는" 불일치를 막습니다.
+        if (product.sourceType === 'import' && !cust.lots[periodKey()] && (cust.volumes[periodKey()] || 0) > 0) {
+          const autoAssign = suggestFefoLot(product);
+          if (autoAssign) cust.lots[periodKey()] = autoAssign.lotUid;
+        }
+        const tr = document.createElement('tr');
+
+        const idxTd = document.createElement('td');
+        idxTd.className = 'idx-cell';
+        idxTd.textContent = idx + 1;
+        tr.appendChild(idxTd);
+
+        const nameTd = document.createElement('td');
+        nameTd.className = 'name-cell';
+        const custNameInput = document.createElement('input');
+        custNameInput.type = 'text';
+        custNameInput.placeholder = '고객명';
+        custNameInput.setAttribute('list', 'customerNameList');
+        custNameInput.value = cust.name;
+        custNameInput.addEventListener('input', (e) => {
+          cust.name = e.target.value;
+          registerCustomerName(e.target.value);
+        });
+        nameTd.appendChild(custNameInput);
+        tr.appendChild(nameTd);
+
+        const orderDateTd = document.createElement('td');
+        orderDateTd.className = 'date-cell';
+        const orderDateInput = document.createElement('input');
+        orderDateInput.type = 'date';
+        orderDateInput.value = cust.orderDate;
+        orderDateInput.addEventListener('input', (e) => { cust.orderDate = e.target.value; });
+        orderDateTd.appendChild(orderDateInput);
+        tr.appendChild(orderDateTd);
+
+        const supplyDateTd = document.createElement('td');
+        supplyDateTd.className = 'date-cell';
+        const supplyDateInput = document.createElement('input');
+        supplyDateInput.type = 'date';
+        supplyDateInput.value = cust.supplyDate;
+        supplyDateInput.addEventListener('input', (e) => { cust.supplyDate = e.target.value; });
+        supplyDateTd.appendChild(supplyDateInput);
+        tr.appendChild(supplyDateTd);
+
+        const priceTd = document.createElement('td');
+        priceTd.className = 'price-cell';
+        const priceInput = document.createElement('input');
+        priceInput.type = 'number';
+        priceInput.placeholder = '단가';
+        priceInput.value = cust.prices[periodKey()] || '';
+        priceInput.addEventListener('input', (e) => {
+          cust.prices[periodKey()] = parseFloat(e.target.value) || 0;
+          updateTotals();
+        });
+        priceTd.appendChild(priceInput);
+        tr.appendChild(priceTd);
+
+        if (product.sourceType === 'import') {
+          const lotTd = document.createElement('td');
+          lotTd.className = 'lot-cell';
+          const lotSelect = document.createElement('select');
+          lotSelect.dataset.custIdx = idx; // updateTotals()에서 데이터(참값) 기준으로 값을 다시 맞추기 위한 표식
+          const lots = getLotSummary(product); // 유통기한 빠른 순 정렬(선입선출 순서)
+          const currentLotUid = cust.lots[periodKey()] || '';
+
+          const emptyOpt = document.createElement('option');
+          emptyOpt.value = '';
+          emptyOpt.textContent = '(로트 선택)';
+          lotSelect.appendChild(emptyOpt);
+
+          lots.forEach(lot => {
+            const opt = document.createElement('option');
+            opt.value = lot.lotUid;
+            const label = lot.lot || '(이름없음)';
+            const expLabel = lot.expDate ? ` · 유통기한 ${lot.expDate}` : '';
+            opt.textContent = `${label} (잔여 ${formatQty(lot.remaining)})${expLabel}`;
+            if (lot.remaining <= 0 && lot.lotUid !== currentLotUid) opt.disabled = true;
+            lotSelect.appendChild(opt);
+          });
+
+          const suggested = suggestFefoLot(product);
+          lotSelect.value = currentLotUid || (suggested ? suggested.lotUid : '');
+          // (선택한 로트가 목록에 없으면 <select>가 자동으로 빈 값으로 처리함)
+
+          lotSelect.addEventListener('change', (e) => {
+            cust.lots[periodKey()] = e.target.value;
+            updateTotals();
+          });
+          lotTd.appendChild(lotSelect);
+
+          if (suggested && currentLotUid && currentLotUid !== suggested.lotUid && computeLotRemaining(product, currentLotUid) > 0) {
+            const warnEl = document.createElement('div');
+            warnEl.className = 'lot-fefo-hint';
+            warnEl.textContent = '⚠ 더 먼저 출고해야 할 로트가 있어요';
+            lotTd.appendChild(warnEl);
+          }
+
+          tr.appendChild(lotTd);
+        }
+
+        const qtyTd = document.createElement('td');
+        qtyTd.className = 'qty-cell';
+        const qtyInput = document.createElement('input');
+        qtyInput.type = 'number';
+        qtyInput.placeholder = '0';
+        qtyInput.value = cust.volumes[periodKey()] || '';
+        qtyInput.addEventListener('input', (e) => {
+          cust.volumes[periodKey()] = parseFloat(e.target.value) || 0;
+          if (product.sourceType === 'import' && !cust.lots[periodKey()]) {
+            const auto = suggestFefoLot(product);
+            if (auto) cust.lots[periodKey()] = auto.lotUid;
+          }
+          updateTotals();
+        });
+        qtyTd.appendChild(qtyInput);
+        tr.appendChild(qtyTd);
+
+        const revenueTd = document.createElement('td');
+        revenueTd.className = 'revenue-cell';
+        revenueTd.textContent = formatNumber(revenueOf(cust)) + '원';
+        tr.appendChild(revenueTd);
+
+        const actionTd = document.createElement('td');
+        actionTd.className = 'action-cell';
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'btn-ghost btn-small';
+        rmBtn.textContent = '×';
+        rmBtn.title = '이 고객 삭제';
+        rmBtn.onclick = () => removeCustomer(product.id, idx);
+        actionTd.appendChild(rmBtn);
+        tr.appendChild(actionTd);
+
+        tbody.appendChild(tr);
+
+        productQty += cust.volumes[periodKey()] || 0;
+        productRevenue += revenueOf(cust);
+      });
+
+      table.appendChild(tbody);
+      scrollWrap.appendChild(table);
+      card.appendChild(scrollWrap);
+
+      const addCustRow = document.createElement('div');
+      addCustRow.className = 'add-customer-row';
+      const addCustBtn = document.createElement('button');
+      addCustBtn.className = 'btn-ghost btn-small';
+      addCustBtn.textContent = '+ 고객 추가';
+      addCustBtn.onclick = () => addCustomer(product.id);
+      addCustRow.appendChild(addCustBtn);
+      card.appendChild(addCustRow);
+
+      const pasteSection = document.createElement('div');
+      pasteSection.className = 'paste-section';
+      pasteSection.innerHTML = `
+        <div class="paste-title">엑셀에서 붙여넣어 한 번에 채우기</div>
+        <div class="paste-hint">엑셀에서 "고객명 · 주문일자 · 공급일자 · 공급단가 · 판매량" 순서의 여러 행을 복사해서 아래에 붙여넣으세요. (Ctrl/Cmd+V)</div>
+        <textarea id="pasteArea-${product.id}" placeholder="예시: 가나다&#9;2026-08-01&#9;2026-08-01&#9;1000&#9;12"></textarea>
+        <div id="pasteStatus-${product.id}" class="paste-status"></div>
+      `;
+      const pasteBtn = document.createElement('button');
+      pasteBtn.className = 'btn-primary btn-small';
+      pasteBtn.textContent = '붙여넣은 내용 적용';
+      pasteBtn.onclick = () => applyPaste(product.id);
+      pasteSection.appendChild(pasteBtn);
+      card.appendChild(pasteSection);
+
+      const foot = document.createElement('div');
+      foot.className = 'product-foot';
+      foot.innerHTML = `<div class="product-total">이 제품 ${currentYear}년 ${currentMonth}월 판매량 합계: <b>${formatQty(productQty)}</b></div>
+        <div class="product-total">매출금액 합계: <b class="revenue">${formatNumber(productRevenue)}원</b></div>`;
+      card.appendChild(foot);
+
+      listEl.appendChild(card);
+
+      if (stockStatus) {
+        updateStockStatus(stockStatus, product);
+      }
+
+      grandQty += productQty;
+      grandRevenue += productRevenue;
+    });
+
+    document.getElementById('summaryQtyLabel').textContent = `${currentYear}년 ${currentMonth}월 전체 판매량`;
+    document.getElementById('summaryQtyValue').textContent = formatQty(grandQty);
+    document.getElementById('summaryRevenueLabel').textContent = `${currentYear}년 ${currentMonth}월 전체 매출금액`;
+    document.getElementById('summaryRevenueValue').textContent = formatNumber(grandRevenue) + '원';
+  }
+
+  function updateStockStatus(el, product) {
+    const chain = computeStockChain(product, currentYear, currentMonth);
+    const cls = chain.ending < 0 ? 'low' : 'ok';
+    const msg = chain.ending < 0
+      ? `재고 부족 (${formatQty(Math.abs(chain.ending))} 초과)`
+      : `${formatQty(chain.ending)} 남음`;
+    el.innerHTML = `${currentYear}년 ${currentMonth}월 기초재고 <b>${formatQty(chain.opening)}</b>
+      + 입고 <b>${formatQty(chain.imported)}</b>
+      − 판매 <b>${formatQty(chain.sold)}</b>
+      = 기말재고 <b class="${cls}">${formatQty(chain.ending)}</b> (${msg})`;
+  }
+
+  function updateTotals() {
+    // Recompute revenue cells, stock status, and totals without full re-render (keeps input focus)
+    // 판매관리 탭 카드만 대상으로 합니다 (다른 탭에 같은 클래스의 카드가 있어도 섞이지 않도록).
+    let grandQty = 0;
+    let grandRevenue = 0;
+
+    document.querySelectorAll('#trackerTab .product-card').forEach(card => {
+      const productId = parseInt(card.dataset.productId, 10);
+      const product = products.find(p => p.id === productId);
+      let productQty = 0;
+      let productRevenue = 0;
+
+      // 고객(판매) 표의 행만 정확히 골라서 매출 셀을 갱신 (입고표·로트현황표와 섞이지 않도록)
+      const rows = card.querySelectorAll('.customer-body tr');
+      product.customers.forEach((cust, idx) => {
+        const qty = cust.volumes[periodKey()] || 0;
+        const rev = revenueOf(cust);
+        const revCell = rows[idx] ? rows[idx].querySelector('.revenue-cell') : null;
+        if (revCell) revCell.textContent = formatNumber(rev) + '원';
+        productQty += qty;
+        productRevenue += rev;
+      });
+
+      const footEl = card.querySelector('.product-foot');
+      footEl.innerHTML = `<div class="product-total">이 제품 ${currentYear}년 ${currentMonth}월 판매량 합계: <b>${formatQty(productQty)}</b></div>
+        <div class="product-total">매출금액 합계: <b class="revenue">${formatNumber(productRevenue)}원</b></div>`;
+
+      const stockStatusEl = card.querySelector('.stock-status');
+      if (stockStatusEl) {
+        updateStockStatus(stockStatusEl, product);
+      }
+
+      if (product.sourceType === 'import') {
+        // 로트별 잔여재고(입고표의 잔여재고 셀 + 로트별 재고 현황표)를 최신 값으로 갱신
+        card.querySelectorAll('.lot-import-body tr').forEach(tr => {
+          const lotUid = tr.dataset.lotUid;
+          const remainCell = tr.querySelector('.lot-remaining-cell');
+          if (!lotUid || !remainCell) return;
+          const rec = (product.imports || []).find(r => r.lotUid === lotUid);
+          const remaining = computeLotRemaining(product, lotUid);
+          remainCell.textContent = formatQty(remaining);
+          remainCell.classList.remove('low', 'warn');
+          if (remaining < 0) remainCell.classList.add('low');
+          else if (remaining > 0 && rec && lotDaysUntilExpiry(rec.expDate) !== null && lotDaysUntilExpiry(rec.expDate) <= 30) remainCell.classList.add('warn');
+        });
+
+        const lotSummaryBody = card.querySelector('.lot-summary-body');
+        if (lotSummaryBody) renderLotSummaryBody(lotSummaryBody, product);
+
+        // 출고 로트 선택 목록의 잔여재고 표시·비활성화 상태 갱신
+        // (선택값은 DOM이 아니라 데이터(cust.lots)를 기준으로 다시 맞춥니다 — 수량 입력 시 자동배정된 로트도 정확히 반영되도록)
+        card.querySelectorAll('.lot-cell select').forEach(select => {
+          const custIdx = parseInt(select.dataset.custIdx, 10);
+          const cust = product.customers[custIdx];
+          const keepValue = cust && cust.lots ? (cust.lots[periodKey()] || '') : '';
+          const lots = getLotSummary(product);
+          select.innerHTML = '';
+          const emptyOpt = document.createElement('option');
+          emptyOpt.value = '';
+          emptyOpt.textContent = '(로트 선택)';
+          select.appendChild(emptyOpt);
+          lots.forEach(lot => {
+            const opt = document.createElement('option');
+            opt.value = lot.lotUid;
+            const label = lot.lot || '(이름없음)';
+            const expLabel = lot.expDate ? ` · 유통기한 ${lot.expDate}` : '';
+            opt.textContent = `${label} (잔여 ${formatQty(lot.remaining)})${expLabel}`;
+            if (lot.remaining <= 0 && lot.lotUid !== keepValue) opt.disabled = true;
+            select.appendChild(opt);
+          });
+          select.value = keepValue;
+        });
+      }
+
+      grandQty += productQty;
+      grandRevenue += productRevenue;
+    });
+
+    document.getElementById('summaryQtyValue').textContent = formatQty(grandQty);
+    document.getElementById('summaryRevenueValue').textContent = formatNumber(grandRevenue) + '원';
+  }
+
+  function gatherSummaryData() {
+    const rows = [];
+    let grandQty = 0;
+    let grandRevenue = 0;
+
+    products.forEach(product => {
+      let qty = 0;
+      let revenue = 0;
+      product.customers.forEach(cust => {
+        qty += cust.volumes[periodKey()] || 0;
+        revenue += revenueOf(cust);
+      });
+
+      let stockLine = '';
+      if (product.sourceType === 'import') {
+        const chain = computeStockChain(product, currentYear, currentMonth);
+        stockLine = `, 기말재고 ${formatQty(chain.ending)}${chain.ending < 0 ? ' (부족)' : ''}`;
+      }
+
+      rows.push({
+        name: product.name || '(이름 없음)',
+        type: product.sourceType === 'import' ? '수입' : '국내',
+        qty,
+        revenue,
+        stockLine
+      });
+
+      grandQty += qty;
+      grandRevenue += revenue;
+    });
+
+    return { rows, grandQty, grandRevenue };
+  }
+
+  function buildAiPrompt() {
+    const purpose = document.getElementById('aiPurposeSelect').value;
+    const data = gatherSummaryData();
+    const periodLabel = `${currentYear}년 ${currentMonth}월`;
+
+    const purposeText = {
+      executive: '경영진 보고용 — 의사결정에 필요한 핵심만 간결하게 정리',
+      team: '팀 공유용 — 담당자들이 바로 업무에 참고할 수 있도록 실무 중심으로 정리',
+      risk: '리스크 점검용 — 재고 부족, 매출 변동 등 확인이 필요한 항목을 중심으로 정리'
+    }[purpose];
+
+    const dataLines = data.rows
+      .map(r => `- ${r.name} (${r.type}): 판매량 ${formatQty(r.qty)}, 매출 ${formatNumber(r.revenue)}원${r.stockLine}`)
+      .join('\n');
+
+    const prompt = `[역할]
+당신은 원자재 유통업체의 영업 데이터를 정리해주는 보고서 작성 보조자입니다.
+
+[맥락]
+아래 데이터는 사내 판매관리 도구에서 집계한 수치이며, 개별 고객명이나 거래처 식별정보는 포함되어 있지 않습니다. 용도: ${purposeText}.
+
+[데이터] (${periodLabel} 기준)
+${dataLines}
+- 전체 판매량 합계: ${formatQty(data.grandQty)}
+- 전체 매출금액 합계: ${formatNumber(data.grandRevenue)}원
+
+[요청]
+위 데이터를 바탕으로 다음 형식에 맞춰 작성해주세요.
+1. 3줄 요약 (숫자와 흐름 중심)
+2. 데이터로 뒷받침되는 인사이트 3가지
+3. 확인이 필요한 리스크 2가지
+4. 담당자가 바로 실행할 수 있는 다음 액션 3가지
+
+[제약]
+- 데이터에 없는 원인을 단정적으로 추측하지 마세요 (인과관계 과장 금지).
+- 제시한 숫자는 반드시 원본 재확인이 필요하다는 점을 명시하세요.
+- 과장되거나 감정적인 표현 없이 객관적인 톤을 유지하세요.`;
+
+    document.getElementById('aiPromptOutput').value = prompt;
+    document.getElementById('aiPromptStatus').textContent = '프롬프트가 생성되었어요. 복사 버튼을 눌러 ChatGPT 등에 붙여넣어 사용하세요.';
+  }
+
+  function copyAiPrompt() {
+    const output = document.getElementById('aiPromptOutput');
+    if (!output.value) return;
+    navigator.clipboard.writeText(output.value).then(() => {
+      const btn = document.getElementById('aiCopyBtn');
+      const original = btn.textContent;
+      btn.textContent = '복사됨!';
+      setTimeout(() => { btn.textContent = original; }, 1200);
+    });
+  }
+
+  // ---- AI 요약 바로 보기 (Supabase Edge Function 'ai-summary' 경유, API 키는 서버에만 보관) ----
+  async function runAiSummary() {
+    const btn = document.getElementById('aiSummaryBtn');
+    const statusEl = document.getElementById('aiSummaryStatus');
+    const resultEl = document.getElementById('aiSummaryResult');
+
+    // 프롬프트 생성 로직을 재사용해서 항상 최신 데이터로 요청합니다.
+    buildAiPrompt();
+    const prompt = document.getElementById('aiPromptOutput').value;
+
+    btn.disabled = true;
+    btn.textContent = 'AI 요약 생성 중...';
+    statusEl.textContent = '';
+    statusEl.className = 'ai-prompt-status';
+    resultEl.style.display = 'none';
+
+    try {
+      const { data, error } = await supabaseClient.functions.invoke('ai-summary', {
+        body: { prompt }
+      });
+
+      if (error) {
+        statusEl.textContent = 'AI 요약 생성 실패: ' + error.message;
+        statusEl.className = 'ai-prompt-status error';
+        return;
+      }
+
+      if (data && data.summary) {
+        resultEl.textContent = data.summary;
+        resultEl.style.display = 'block';
+        statusEl.textContent = 'AI 요약이에요. (참고용이며, 실제 수치는 반드시 원본과 대조해주세요.)';
+        statusEl.className = 'ai-prompt-status';
+      } else {
+        statusEl.textContent = 'AI 요약 생성 실패: ' + (data && data.error ? data.error : '알 수 없는 오류');
+        statusEl.className = 'ai-prompt-status error';
+      }
+    } catch (err) {
+      statusEl.textContent = 'AI 요약 생성 실패: ' + err.message;
+      statusEl.className = 'ai-prompt-status error';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'AI 요약 바로 보기';
+    }
+  }
+
+  // ---- 제품 마스터 데이터 저장/불러오기 (Supabase: product_master 테이블) ----
+  async function loadMasterData(userId) {
+    const statusEl = document.getElementById('masterSaveStatus');
+    statusEl.textContent = '불러오는 중...';
+    statusEl.className = 'save-status';
+
+    const { data, error } = await supabaseClient
+      .from('product_master')
+      .select('data')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      statusEl.textContent = '불러오기 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    if (data && Array.isArray(data.data) && data.data.length > 0) {
+      masterProducts = data.data;
+      masterIdSeq = Math.max(0, ...masterProducts.map(m => m.id || 0)) + 1;
+      statusEl.textContent = '저장된 데이터를 불러왔어요.';
+      statusEl.className = 'save-status ok';
+    } else {
+      statusEl.textContent = '저장된 데이터가 없어 기본 목록으로 시작해요.';
+      statusEl.className = 'save-status';
+    }
+    renderMasterTab();
+  }
+
+  async function saveMasterData() {
+    const statusEl = document.getElementById('masterSaveStatus');
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    const userId = sessionData.session && sessionData.session.user.id;
+    if (!userId) return;
+
+    statusEl.textContent = '저장 중...';
+    statusEl.className = 'save-status';
+
+    const { error } = await supabaseClient
+      .from('product_master')
+      .upsert({ user_id: userId, data: masterProducts, updated_at: new Date().toISOString() });
+
+    if (error) {
+      statusEl.textContent = '저장 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    const now = new Date();
+    statusEl.textContent = `마지막 저장 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    statusEl.className = 'save-status ok';
+  }
+
+  // ---- 판매관리 데이터 저장/불러오기 (Supabase: sales_data 테이블) ----
+  async function loadUserData(userId) {
+    const statusEl = document.getElementById('saveStatus');
+    statusEl.textContent = '불러오는 중...';
+    statusEl.className = 'save-status';
+
+    const { data, error } = await supabaseClient
+      .from('sales_data')
+      .select('data')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      statusEl.textContent = '불러오기 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    if (data && Array.isArray(data.data) && data.data.length > 0) {
+      products = data.data;
+      productIdSeq = Math.max(0, ...products.map(p => p.id || 0)) + 1;
+      // 로트 고유번호(lotUid) 발급 카운터도 기존에 저장된 최댓값 다음부터 이어지도록 맞춰줍니다.
+      // (안 맞추면 새로 추가한 로트가 예전 로트와 같은 lotUid를 받아 재고 계산이 꼬일 수 있어요.)
+      let maxLotNum = 0;
+      products.forEach(p => (p.imports || []).forEach(rec => {
+        const m = /^lot(\d+)$/.exec(rec.lotUid || '');
+        if (m) maxLotNum = Math.max(maxLotNum, parseInt(m[1], 10));
+      }));
+      lotIdSeq = maxLotNum + 1;
+      renderAll();
+      statusEl.textContent = '저장된 데이터를 불러왔어요.';
+      statusEl.className = 'save-status ok';
+    } else {
+      statusEl.textContent = '저장된 데이터가 없어 기본 화면으로 시작해요.';
+      statusEl.className = 'save-status';
+    }
+  }
+
+  async function saveUserData() {
+    const statusEl = document.getElementById('saveStatus');
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    const userId = sessionData.session && sessionData.session.user.id;
+    if (!userId) return;
+
+    statusEl.textContent = '저장 중...';
+    statusEl.className = 'save-status';
+
+    const { error } = await supabaseClient
+      .from('sales_data')
+      .upsert({ user_id: userId, data: products, updated_at: new Date().toISOString() });
+
+    if (error) {
+      statusEl.textContent = '저장 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    statusEl.textContent = `마지막 저장 ${hh}:${mm}`;
+    statusEl.className = 'save-status ok';
+  }
+
+  // ==========================================================================
+  // ========================== 영업이익 계산기 탭 로직 =========================
+  // (모든 식별자에 pc 접두사를 붙여 판매관리 탭과 이름이 겹치지 않게 했습니다)
+  // ==========================================================================
+  let pcProducts = [];
+  let pcCurrentYear = 2026;
+  let pcCurrentMonth = 8;
+  let pcProductIdSeq = 1;
+  const PC_YEAR_RANGE = { start: 2024, end: 2035 };
+
+  function pcPeriodKey() {
+    return `${pcCurrentYear}-${pcCurrentMonth}`;
+  }
+
+  function pcPeriodOfDate(dateStr) {
+    if (!dateStr) return null;
+    const parts = dateStr.split('-');
+    if (parts.length < 2) return null;
+    return `${parseInt(parts[0], 10)}-${parseInt(parts[1], 10)}`;
+  }
+
+  function pcGetDefaultDate() {
+    const mm = String(pcCurrentMonth).padStart(2, '0');
+    return `${pcCurrentYear}-${mm}-01`;
+  }
+
+  function pcAddProduct(name) {
+    pcProducts.push({
+      id: pcProductIdSeq++,
+      name: name || `제품 ${pcProducts.length + 1}`,
+      revenues: {}, // periodKey -> 매출(원), 직접 입력 (또는 판매관리 탭에서 채우기)
+      imports: [{ date: pcGetDefaultDate(), qty: 0, cost: 0, storage: 0, transport: 0 }]
+    });
+    pcRenderAll();
+  }
+
+  function pcRemoveProduct(id) {
+    pcProducts = pcProducts.filter(p => p.id !== id);
+    pcRenderAll();
+  }
+
+  function pcAddImportRecord(productId) {
+    const product = pcProducts.find(p => p.id === productId);
+    product.imports.push({ date: pcGetDefaultDate(), qty: 0, cost: 0, storage: 0, transport: 0 });
+    pcRenderAll();
+  }
+
+  function pcRemoveImportRecord(productId, idx) {
+    const product = pcProducts.find(p => p.id === productId);
+    product.imports.splice(idx, 1);
+    pcRenderAll();
+  }
+
+  function pcInitYearSelect() {
+    const sel = document.getElementById('pcYearSelect');
+    for (let y = PC_YEAR_RANGE.start; y <= PC_YEAR_RANGE.end; y++) {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y + '년';
+      if (y === pcCurrentYear) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function pcInitMonthSelect() {
+    const sel = document.getElementById('pcMonthSelect');
+    for (let m = 1; m <= 12; m++) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m + '월';
+      if (m === pcCurrentMonth) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function pcRecordCost(rec) {
+    return (rec.cost || 0) + (rec.storage || 0) + (rec.transport || 0);
+  }
+
+  function pcCostForPeriod(product, pk) {
+    return product.imports.reduce((sum, rec) => {
+      return pcPeriodOfDate(rec.date) === pk ? sum + pcRecordCost(rec) : sum;
+    }, 0);
+  }
+
+  // 판매관리 탭(같은 페이지)의 실시간 products 배열에서 같은 이름 제품의 매출 합계를 찾습니다.
+  // 별도로 데이터베이스를 다시 조회할 필요 없이 항상 최신 값을 봅니다.
+  function pcComputeTrackerRevenue(productName, pk) {
+    const nameNorm = (productName || '').trim().toLowerCase();
+    if (!nameNorm || !products.length) return null;
+
+    let total = 0;
+    let found = false;
+    products.forEach(p => {
+      if ((p.name || '').trim().toLowerCase() === nameNorm) {
+        found = true;
+        (p.customers || []).forEach(c => {
+          const qty = (c.volumes && c.volumes[pk]) || 0;
+          const price = (c.prices && c.prices[pk]) || 0;
+          total += qty * price;
+        });
+      }
+    });
+    return found ? total : null;
+  }
+
+  function pcUpdateRevenueHint(product) {
+    const hintEl = document.getElementById(`revHint-${product.id}`);
+    if (!hintEl) return;
+    const linked = pcComputeTrackerRevenue(product.name, pcPeriodKey());
+    if (linked === null) {
+      hintEl.textContent = '판매관리 탭에 같은 이름 제품이 없어요.';
+      hintEl.classList.add('muted-hint');
+    } else {
+      hintEl.textContent = `판매관리 탭 매출: ${formatNumber(linked)}원`;
+      hintEl.classList.remove('muted-hint');
+    }
+  }
+
+  function pcFillFromTracker(productId) {
+    const product = pcProducts.find(p => p.id === productId);
+    const linked = pcComputeTrackerRevenue(product.name, pcPeriodKey());
+    if (linked === null) return;
+    product.revenues[pcPeriodKey()] = linked;
+    const input = document.querySelector(`#profitTab .product-card[data-product-id="${productId}"] .revenue-input-row input`);
+    if (input) input.value = linked;
+    pcUpdateTotals();
+  }
+
+  function pcRenderAll() {
+    pcCurrentYear = parseInt(document.getElementById('pcYearSelect').value, 10);
+    pcCurrentMonth = parseInt(document.getElementById('pcMonthSelect').value, 10);
+    const listEl = document.getElementById('pcProductList');
+    listEl.innerHTML = '';
+
+    let grandRevenue = 0;
+    let grandCost = 0;
+
+    pcProducts.forEach(product => {
+      const card = document.createElement('div');
+      card.className = 'product-card';
+      card.dataset.productId = product.id;
+
+      const head = document.createElement('div');
+      head.className = 'product-head';
+
+      const nameInput = buildProductNameSelect(product.name, (newName) => {
+        product.name = newName;
+        pcUpdateRevenueHint(product);
+        pcUpdateTotals();
+      });
+      head.appendChild(nameInput);
+
+      const revenueField = document.createElement('div');
+      revenueField.className = 'revenue-field';
+
+      const inputRow = document.createElement('div');
+      inputRow.className = 'revenue-input-row';
+      const revenueLabel = document.createElement('span');
+      revenueLabel.textContent = `${pcCurrentYear}년 ${pcCurrentMonth}월 매출(원)`;
+      const revenueInput = document.createElement('input');
+      revenueInput.type = 'number';
+      revenueInput.placeholder = '0';
+      revenueInput.value = product.revenues[pcPeriodKey()] || '';
+      revenueInput.addEventListener('input', (e) => {
+        product.revenues[pcPeriodKey()] = parseFloat(e.target.value) || 0;
+        pcUpdateTotals();
+      });
+      inputRow.appendChild(revenueLabel);
+      inputRow.appendChild(revenueInput);
+      revenueField.appendChild(inputRow);
+
+      const hintRow = document.createElement('div');
+      hintRow.className = 'revenue-hint-row';
+      const revenueHint = document.createElement('span');
+      revenueHint.id = `revHint-${product.id}`;
+      revenueHint.className = 'revenue-hint';
+      const linkedRevenue = pcComputeTrackerRevenue(product.name, pcPeriodKey());
+      if (linkedRevenue === null) {
+        revenueHint.textContent = '판매관리 탭에 같은 이름 제품이 없어요.';
+        revenueHint.classList.add('muted-hint');
+      } else {
+        revenueHint.textContent = `판매관리 탭 매출: ${formatNumber(linkedRevenue)}원`;
+      }
+      hintRow.appendChild(revenueHint);
+
+      const fillBtn = document.createElement('button');
+      fillBtn.className = 'btn-ghost btn-small';
+      fillBtn.textContent = '이 값으로 채우기';
+      fillBtn.onclick = () => pcFillFromTracker(product.id);
+      hintRow.appendChild(fillBtn);
+
+      revenueField.appendChild(hintRow);
+      head.appendChild(revenueField);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-danger';
+      delBtn.textContent = '제품 삭제';
+      delBtn.onclick = () => pcRemoveProduct(product.id);
+      head.appendChild(delBtn);
+
+      card.appendChild(head);
+
+      const scrollWrap = document.createElement('div');
+      scrollWrap.className = 'table-scroll';
+      const table = document.createElement('table');
+      table.innerHTML = `<thead><tr>
+        <th class="idx-cell">#</th>
+        <th>수입일자</th>
+        <th>수입물량(Kg)</th>
+        <th>수입원가(원)</th>
+        <th>창고보관비(원)</th>
+        <th>운송비(원)</th>
+        <th>비용합계</th>
+        <th></th>
+      </tr></thead>`;
+      const tbody = document.createElement('tbody');
+
+      product.imports.forEach((rec, idx) => {
+        const tr = document.createElement('tr');
+
+        const idxTd = document.createElement('td');
+        idxTd.className = 'idx-cell';
+        idxTd.textContent = idx + 1;
+        tr.appendChild(idxTd);
+
+        const dateTd = document.createElement('td');
+        dateTd.className = 'date-cell';
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.value = rec.date;
+        dateInput.addEventListener('change', (e) => { rec.date = e.target.value; pcRenderAll(); });
+        dateTd.appendChild(dateInput);
+        tr.appendChild(dateTd);
+
+        const qtyTd = document.createElement('td');
+        qtyTd.className = 'qty-cell';
+        const qtyInput = document.createElement('input');
+        qtyInput.type = 'number';
+        qtyInput.placeholder = '0';
+        qtyInput.value = rec.qty || '';
+        qtyInput.addEventListener('input', (e) => { rec.qty = parseFloat(e.target.value) || 0; pcUpdateTotals(); });
+        qtyTd.appendChild(qtyInput);
+        tr.appendChild(qtyTd);
+
+        const costTd = document.createElement('td');
+        costTd.className = 'cost-cell';
+        const costInput = document.createElement('input');
+        costInput.type = 'number';
+        costInput.placeholder = '0';
+        costInput.value = rec.cost || '';
+        costInput.addEventListener('input', (e) => { rec.cost = parseFloat(e.target.value) || 0; pcUpdateTotals(); });
+        costTd.appendChild(costInput);
+        tr.appendChild(costTd);
+
+        const storageTd = document.createElement('td');
+        storageTd.className = 'cost-cell';
+        const storageInput = document.createElement('input');
+        storageInput.type = 'number';
+        storageInput.placeholder = '0';
+        storageInput.value = rec.storage || '';
+        storageInput.addEventListener('input', (e) => { rec.storage = parseFloat(e.target.value) || 0; pcUpdateTotals(); });
+        storageTd.appendChild(storageInput);
+        tr.appendChild(storageTd);
+
+        const transportTd = document.createElement('td');
+        transportTd.className = 'cost-cell';
+        const transportInput = document.createElement('input');
+        transportInput.type = 'number';
+        transportInput.placeholder = '0';
+        transportInput.value = rec.transport || '';
+        transportInput.addEventListener('input', (e) => { rec.transport = parseFloat(e.target.value) || 0; pcUpdateTotals(); });
+        transportTd.appendChild(transportInput);
+        tr.appendChild(transportTd);
+
+        const totalTd = document.createElement('td');
+        totalTd.className = 'total-cell';
+        totalTd.textContent = formatNumber(pcRecordCost(rec)) + '원';
+        tr.appendChild(totalTd);
+
+        const actionTd = document.createElement('td');
+        actionTd.className = 'action-cell';
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'btn-ghost btn-small';
+        rmBtn.textContent = '×';
+        rmBtn.title = '이 입고 기록 삭제';
+        rmBtn.onclick = () => pcRemoveImportRecord(product.id, idx);
+        actionTd.appendChild(rmBtn);
+        tr.appendChild(actionTd);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      scrollWrap.appendChild(table);
+      card.appendChild(scrollWrap);
+
+      const addRow = document.createElement('div');
+      addRow.className = 'add-row';
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn-ghost btn-small';
+      addBtn.textContent = '+ 입고 기록 추가';
+      addBtn.onclick = () => pcAddImportRecord(product.id);
+      addRow.appendChild(addBtn);
+      card.appendChild(addRow);
+
+      const revenue = product.revenues[pcPeriodKey()] || 0;
+      const cost = pcCostForPeriod(product, pcPeriodKey());
+      const profit = revenue - cost;
+
+      const foot = document.createElement('div');
+      foot.className = 'product-foot';
+      foot.innerHTML = `<div class="product-total">${pcCurrentYear}년 ${pcCurrentMonth}월 매출: <b>${formatNumber(revenue)}원</b></div>
+        <div class="product-total">비용 합계: <b class="cost">${formatNumber(cost)}원</b></div>
+        <div class="product-total">영업이익: <b class="profit${profit < 0 ? ' negative' : ''}">${formatNumber(profit)}원</b></div>`;
+      card.appendChild(foot);
+
+      listEl.appendChild(card);
+
+      grandRevenue += revenue;
+      grandCost += cost;
+    });
+
+    const grandProfit = grandRevenue - grandCost;
+    document.getElementById('pcSummaryRevenueLabel').textContent = `${pcCurrentYear}년 ${pcCurrentMonth}월 전체 매출`;
+    document.getElementById('pcSummaryRevenueValue').textContent = formatNumber(grandRevenue) + '원';
+    document.getElementById('pcSummaryCostLabel').textContent = `${pcCurrentYear}년 ${pcCurrentMonth}월 전체 비용`;
+    document.getElementById('pcSummaryCostValue').textContent = formatNumber(grandCost) + '원';
+    document.getElementById('pcSummaryProfitLabel').textContent = `${pcCurrentYear}년 ${pcCurrentMonth}월 전체 영업이익`;
+    const profitValueEl = document.getElementById('pcSummaryProfitValue');
+    profitValueEl.textContent = formatNumber(grandProfit) + '원';
+    profitValueEl.classList.toggle('negative', grandProfit < 0);
+  }
+
+  function pcUpdateTotals() {
+    // 영업이익 탭 카드만 대상으로 합니다 (판매관리 탭 카드와 섞이지 않도록).
+    let grandRevenue = 0;
+    let grandCost = 0;
+
+    document.querySelectorAll('#profitTab .product-card').forEach(card => {
+      const productId = parseInt(card.dataset.productId, 10);
+      const product = pcProducts.find(p => p.id === productId);
+
+      const rows = card.querySelectorAll('tbody tr');
+      product.imports.forEach((rec, idx) => {
+        const totalCell = rows[idx] ? rows[idx].querySelector('.total-cell') : null;
+        if (totalCell) totalCell.textContent = formatNumber(pcRecordCost(rec)) + '원';
+      });
+
+      const revenue = product.revenues[pcPeriodKey()] || 0;
+      const cost = pcCostForPeriod(product, pcPeriodKey());
+      const profit = revenue - cost;
+
+      const footEl = card.querySelector('.product-foot');
+      footEl.innerHTML = `<div class="product-total">${pcCurrentYear}년 ${pcCurrentMonth}월 매출: <b>${formatNumber(revenue)}원</b></div>
+        <div class="product-total">비용 합계: <b class="cost">${formatNumber(cost)}원</b></div>
+        <div class="product-total">영업이익: <b class="profit${profit < 0 ? ' negative' : ''}">${formatNumber(profit)}원</b></div>`;
+
+      grandRevenue += revenue;
+      grandCost += cost;
+    });
+
+    const grandProfit = grandRevenue - grandCost;
+    document.getElementById('pcSummaryRevenueValue').textContent = formatNumber(grandRevenue) + '원';
+    document.getElementById('pcSummaryCostValue').textContent = formatNumber(grandCost) + '원';
+    const profitValueEl = document.getElementById('pcSummaryProfitValue');
+    profitValueEl.textContent = formatNumber(grandProfit) + '원';
+    profitValueEl.classList.toggle('negative', grandProfit < 0);
+  }
+
+  // ---- 영업이익 데이터 저장/불러오기 (Supabase: import_profit_data 테이블) ----
+  async function pcLoadUserData(userId) {
+    const statusEl = document.getElementById('pcSaveStatus');
+    statusEl.textContent = '불러오는 중...';
+    statusEl.className = 'save-status';
+
+    const { data, error } = await supabaseClient
+      .from('import_profit_data')
+      .select('data')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      statusEl.textContent = '불러오기 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    if (data && Array.isArray(data.data) && data.data.length > 0) {
+      pcProducts = data.data;
+      pcProductIdSeq = Math.max(0, ...pcProducts.map(p => p.id || 0)) + 1;
+      pcRenderAll();
+      statusEl.textContent = '저장된 데이터를 불러왔어요.';
+      statusEl.className = 'save-status ok';
+    } else {
+      pcRenderAll(); // 판매관리 탭 연동 데이터를 반영해 다시 그려줍니다.
+      statusEl.textContent = '저장된 데이터가 없어 기본 화면으로 시작해요.';
+      statusEl.className = 'save-status';
+    }
+  }
+
+  async function pcSaveUserData() {
+    const statusEl = document.getElementById('pcSaveStatus');
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    const userId = sessionData.session && sessionData.session.user.id;
+    if (!userId) return;
+
+    statusEl.textContent = '저장 중...';
+    statusEl.className = 'save-status';
+
+    const { error } = await supabaseClient
+      .from('import_profit_data')
+      .upsert({ user_id: userId, data: pcProducts, updated_at: new Date().toISOString() });
+
+    if (error) {
+      statusEl.textContent = '저장 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    statusEl.textContent = `마지막 저장 ${hh}:${mm}`;
+    statusEl.className = 'save-status ok';
+  }
+
+  // ================== 초기화 ==================
+  // 두 탭의 연/월 선택 목록을 먼저 채워둬야, 그 이후에 호출되는 renderAll()/pcRenderAll()이
+  // 정상적인 연/월 값을 읽어올 수 있습니다 (제품 마스터 추가도 내부적으로 두 함수를 호출해요).
+  initYearSelect();
+  initMonthSelect();
+  pcInitYearSelect();
+  pcInitMonthSelect();
+
+  addMasterEntry('제품 A (국내)', '', '');
+  addMasterEntry('제품 B (수입)', '', '');
+
+  addProduct('제품 A (국내)', 'domestic');
+  addProduct('제품 B (수입)', 'import');
+  pcAddProduct('제품 B (수입)');
+
+  checkSession();
+</script>
+</body>
+</html>
