@@ -318,6 +318,57 @@
     line-height: 1.6;
     white-space: pre-wrap;
   }
+  .monthly-report-item {
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .monthly-report-item summary {
+    cursor: pointer;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--card2);
+  }
+  .monthly-report-item .monthly-report-body {
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    background: #0f1115;
+  }
+  .monthly-report-empty {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .stock-alert-item {
+    margin-top: 8px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    background: #0f1115;
+  }
+  .stock-alert-item.low_stock { border-color: var(--warn); }
+  .stock-alert-item.expiry { border-color: var(--danger); }
+  .stock-alert-tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-right: 6px;
+  }
+  .stock-alert-item.low_stock .stock-alert-tag { color: var(--warn); background: rgba(255,182,72,0.12); }
+  .stock-alert-item.expiry .stock-alert-tag { color: var(--danger); background: rgba(255,107,107,0.12); }
+  .stock-alert-empty {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
 
   .revenue-field {
     display: flex;
@@ -348,9 +399,10 @@
   td.action-cell { width: 40px; text-align: center; }
   table.master-table { min-width: 0; }
   table.master-table input { width: 100%; }
-  td.master-name-cell { width: 40%; }
-  td.master-supplier-cell { width: 25%; }
-  td.master-origin-cell { width: 25%; }
+  td.master-threshold-cell { width: 20%; }
+  td.master-name-cell { width: 30%; }
+  td.master-supplier-cell { width: 20%; }
+  td.master-origin-cell { width: 20%; }
 
   .add-customer-row { margin-top: 10px; }
   .add-row { margin-top: 10px; }
@@ -521,6 +573,24 @@
         <div id="aiSummaryStatus" class="ai-prompt-status"></div>
         <div id="aiSummaryResult" class="ai-summary-result" style="display:none;"></div>
       </div>
+
+      <div class="ai-live-section">
+        <div class="ai-hint">시간 트리거: 매월 1일, 사람이 접속하지 않아도 서버가 자동으로 지난달 리포트를 만들어서 여기 저장해둡니다. (설정 방법은 안내해드릴게요.)</div>
+        <div class="ai-controls">
+          <button class="btn-ghost btn-small" onclick="loadMonthlyReports()">새로고침</button>
+        </div>
+        <div id="monthlyReportStatus" class="ai-prompt-status"></div>
+        <div id="monthlyReportList"></div>
+      </div>
+
+      <div class="ai-live-section">
+        <div class="ai-hint">데이터 트리거: 판매 데이터를 저장할 때마다 서버가 자동으로 재고가 부족하거나 유통기한이 임박한 로트가 있는지 확인해서 여기 알려줍니다. (사람이 확인 버튼을 누르지 않아도 저장 직후 자동으로 갱신돼요.)</div>
+        <div class="ai-controls">
+          <button class="btn-ghost btn-small" onclick="loadStockAlerts()">새로고침</button>
+        </div>
+        <div id="stockAlertStatus" class="ai-prompt-status"></div>
+        <div id="stockAlertList"></div>
+      </div>
     </div>
   </div>
 
@@ -579,6 +649,7 @@
           <th>제품명</th>
           <th>공급자</th>
           <th>원산지</th>
+          <th>재고부족 알림 기준(Kg)</th>
           <th></th>
         </tr></thead>
         <tbody id="masterTableBody"></tbody>
@@ -602,6 +673,8 @@
     // 판매관리 데이터를 그 다음 불러와야, 영업이익 탭의 매출 연동 힌트가 처음부터 정확하게 표시됩니다.
     await loadUserData(userId);
     await pcLoadUserData(userId);
+    loadMonthlyReports(); // 다른 탭 로딩을 막지 않도록 await 없이 백그라운드로 불러옵니다.
+    loadStockAlerts(); // 마찬가지로 백그라운드로 불러옵니다.
   }
 
   function showLogin() {
@@ -695,12 +768,17 @@
   let masterProducts = [];
   let masterIdSeq = 1;
 
-  function addMasterEntry(name, supplier, origin) {
+  const DEFAULT_LOW_STOCK_THRESHOLD = 5000; // 대부분의 제품은 이 정도(Kg) 이하로 떨어지면 수입을 준비해야 합니다.
+
+  function addMasterEntry(name, supplier, origin, lowStockThreshold) {
     masterProducts.push({
       id: masterIdSeq++,
       name: name || '',
       supplier: supplier || '',
-      origin: origin || ''
+      origin: origin || '',
+      lowStockThreshold: (lowStockThreshold === undefined || lowStockThreshold === null || lowStockThreshold === '')
+        ? DEFAULT_LOW_STOCK_THRESHOLD
+        : lowStockThreshold
     });
     renderMasterTab();
     renderAll();
@@ -763,6 +841,23 @@
       originInput.addEventListener('input', (e) => { entry.origin = e.target.value; });
       originTd.appendChild(originInput);
       tr.appendChild(originTd);
+
+      const thresholdTd = document.createElement('td');
+      thresholdTd.className = 'master-threshold-cell';
+      const thresholdInput = document.createElement('input');
+      thresholdInput.type = 'number';
+      thresholdInput.min = '0';
+      thresholdInput.step = '1';
+      thresholdInput.placeholder = String(DEFAULT_LOW_STOCK_THRESHOLD);
+      thresholdInput.value = (entry.lowStockThreshold === undefined || entry.lowStockThreshold === null)
+        ? DEFAULT_LOW_STOCK_THRESHOLD
+        : entry.lowStockThreshold;
+      thresholdInput.addEventListener('input', (e) => {
+        const v = parseFloat(e.target.value);
+        entry.lowStockThreshold = isNaN(v) ? DEFAULT_LOW_STOCK_THRESHOLD : v;
+      });
+      thresholdTd.appendChild(thresholdInput);
+      tr.appendChild(thresholdTd);
 
       const actionTd = document.createElement('td');
       actionTd.className = 'action-cell';
@@ -1832,6 +1927,103 @@ ${dataLines}
     }
   }
 
+  // ---- 시간 트리거: 서버가 매월 자동으로 만들어둔 리포트 목록 보기 (Supabase: monthly_reports 테이블) ----
+  async function loadMonthlyReports() {
+    const statusEl = document.getElementById('monthlyReportStatus');
+    const listEl = document.getElementById('monthlyReportList');
+    if (!statusEl || !listEl) return;
+
+    statusEl.textContent = '불러오는 중...';
+    statusEl.className = 'ai-prompt-status';
+
+    const { data, error } = await supabaseClient
+      .from('monthly_reports')
+      .select('period, summary, generated_at')
+      .order('period', { ascending: false });
+
+    if (error) {
+      statusEl.textContent = '불러오기 실패: ' + error.message;
+      statusEl.className = 'ai-prompt-status error';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    if (!data || data.length === 0) {
+      statusEl.textContent = '';
+      listEl.innerHTML = '<div class="monthly-report-empty">아직 자동 생성된 리포트가 없어요. 시간 트리거를 설정하시면 매월 1일 자동으로 여기 쌓여요.</div>';
+      return;
+    }
+
+    statusEl.textContent = `${data.length}개의 자동 리포트가 있어요.`;
+    statusEl.className = 'ai-prompt-status';
+
+    data.forEach((report, idx) => {
+      const wrap = document.createElement('details');
+      wrap.className = 'monthly-report-item';
+      if (idx === 0) wrap.open = true;
+
+      const summaryEl = document.createElement('summary');
+      const genDate = report.generated_at ? new Date(report.generated_at) : null;
+      const genLabel = genDate ? ` (생성: ${genDate.getFullYear()}-${String(genDate.getMonth() + 1).padStart(2, '0')}-${String(genDate.getDate()).padStart(2, '0')})` : '';
+      summaryEl.textContent = `${report.period} 리포트${genLabel}`;
+      wrap.appendChild(summaryEl);
+
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'monthly-report-body';
+      bodyEl.textContent = report.summary;
+      wrap.appendChild(bodyEl);
+
+      listEl.appendChild(wrap);
+    });
+  }
+
+  // ---- 데이터 트리거: 저장할 때마다 서버가 자동으로 만들어둔 재고/유통기한 알림 보기 (Supabase: stock_alerts 테이블) ----
+  async function loadStockAlerts() {
+    const statusEl = document.getElementById('stockAlertStatus');
+    const listEl = document.getElementById('stockAlertList');
+    if (!statusEl || !listEl) return;
+
+    statusEl.textContent = '불러오는 중...';
+    statusEl.className = 'ai-prompt-status';
+
+    const { data, error } = await supabaseClient
+      .from('stock_alerts')
+      .select('type, product_name, lot, message, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      statusEl.textContent = '불러오기 실패: ' + error.message;
+      statusEl.className = 'ai-prompt-status error';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    if (!data || data.length === 0) {
+      statusEl.textContent = '';
+      listEl.innerHTML = '<div class="stock-alert-empty">현재 재고 부족이나 유통기한 임박 알림이 없어요. (데이터 트리거를 아직 설정하지 않으셨다면, 설정 방법을 안내해드릴게요.)</div>';
+      return;
+    }
+
+    statusEl.textContent = `${data.length}건의 알림이 있어요.`;
+    statusEl.className = 'ai-prompt-status';
+
+    data.forEach(alert => {
+      const item = document.createElement('div');
+      item.className = 'stock-alert-item ' + (alert.type === 'expiry' ? 'expiry' : 'low_stock');
+
+      const tag = document.createElement('span');
+      tag.className = 'stock-alert-tag';
+      tag.textContent = alert.type === 'expiry' ? '유통기한' : '재고부족';
+      item.appendChild(tag);
+
+      const text = document.createElement('span');
+      text.textContent = alert.message;
+      item.appendChild(text);
+
+      listEl.appendChild(item);
+    });
+  }
+
   // ---- 제품 마스터 데이터 저장/불러오기 (Supabase: product_master 테이블) ----
   async function loadMasterData(userId) {
     const statusEl = document.getElementById('masterSaveStatus');
@@ -1852,6 +2044,12 @@ ${dataLines}
 
     if (data && Array.isArray(data.data) && data.data.length > 0) {
       masterProducts = data.data;
+      // 기존에 저장된 제품 마스터에는 재고부족 알림 기준이 없을 수 있어, 없으면 기본값으로 채워줍니다.
+      masterProducts.forEach(m => {
+        if (m.lowStockThreshold === undefined || m.lowStockThreshold === null || m.lowStockThreshold === '') {
+          m.lowStockThreshold = DEFAULT_LOW_STOCK_THRESHOLD;
+        }
+      });
       masterIdSeq = Math.max(0, ...masterProducts.map(m => m.id || 0)) + 1;
       statusEl.textContent = '저장된 데이터를 불러왔어요.';
       statusEl.className = 'save-status ok';
@@ -1948,6 +2146,10 @@ ${dataLines}
     const mm = String(now.getMinutes()).padStart(2, '0');
     statusEl.textContent = `마지막 저장 ${hh}:${mm}`;
     statusEl.className = 'save-status ok';
+
+    // 데이터 트리거: 저장하면 서버가 자동으로 재고/유통기한을 다시 확인합니다.
+    // 트리거 호출이 비동기라 약간의 시간차가 있을 수 있어, 2초 뒤 알림 목록을 다시 불러옵니다.
+    setTimeout(loadStockAlerts, 2000);
   }
 
   // ==========================================================================
