@@ -591,6 +591,15 @@
         <div id="stockAlertStatus" class="ai-prompt-status"></div>
         <div id="stockAlertList"></div>
       </div>
+
+      <div class="ai-live-section">
+        <div class="ai-hint">프로세스 트리거: "저장" 버튼을 누르는 행동 자체가 방아쇠가 되어, 한국 날짜 기준 하루에 한 번만 AI가 자동으로 요약을 새로 만들어둡니다. 같은 날 여러 번 저장해도 AI는 하루 한 번만 호출되어 비용이 늘지 않아요. 다음 날 첫 저장 때 다시 새로 생성됩니다.</div>
+        <div class="ai-controls">
+          <button class="btn-ghost btn-small" onclick="loadDailySummary()">새로고침</button>
+        </div>
+        <div id="dailySummaryStatus" class="ai-prompt-status"></div>
+        <div id="dailySummaryResult" class="ai-summary-result" style="display:none;"></div>
+      </div>
     </div>
   </div>
 
@@ -675,6 +684,7 @@
     await pcLoadUserData(userId);
     loadMonthlyReports(); // 다른 탭 로딩을 막지 않도록 await 없이 백그라운드로 불러옵니다.
     loadStockAlerts(); // 마찬가지로 백그라운드로 불러옵니다.
+    loadDailySummary(); // 마찬가지로 백그라운드로 불러옵니다.
   }
 
   function showLogin() {
@@ -2024,6 +2034,41 @@ ${dataLines}
     });
   }
 
+  // ---- 프로세스 트리거: 저장 행동 자체가 방아쇠가 되어, 하루 한 번만 서버가 자동으로 만들어둔 AI 요약 보기 (Supabase: daily_ai_summaries 테이블) ----
+  async function loadDailySummary() {
+    const statusEl = document.getElementById('dailySummaryStatus');
+    const resultEl = document.getElementById('dailySummaryResult');
+    if (!statusEl || !resultEl) return;
+
+    statusEl.textContent = '불러오는 중...';
+    statusEl.className = 'ai-prompt-status';
+    resultEl.style.display = 'none';
+
+    const { data, error } = await supabaseClient
+      .from('daily_ai_summaries')
+      .select('summary_date, summary, generated_at')
+      .order('summary_date', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      statusEl.textContent = '불러오기 실패: ' + error.message;
+      statusEl.className = 'ai-prompt-status error';
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      statusEl.textContent = '아직 자동 생성된 요약이 없어요. 데이터를 저장하면 오늘 처음 한 번 자동으로 만들어져요.';
+      statusEl.className = 'ai-prompt-status';
+      return;
+    }
+
+    const row = data[0];
+    statusEl.textContent = `${row.summary_date} (한국시간) 기준 자동 요약이에요.`;
+    statusEl.className = 'ai-prompt-status';
+    resultEl.style.display = 'block';
+    resultEl.textContent = row.summary;
+  }
+
   // ---- 제품 마스터 데이터 저장/불러오기 (Supabase: product_master 테이블) ----
   async function loadMasterData(userId) {
     const statusEl = document.getElementById('masterSaveStatus');
@@ -2150,6 +2195,9 @@ ${dataLines}
     // 데이터 트리거: 저장하면 서버가 자동으로 재고/유통기한을 다시 확인합니다.
     // 트리거 호출이 비동기라 약간의 시간차가 있을 수 있어, 2초 뒤 알림 목록을 다시 불러옵니다.
     setTimeout(loadStockAlerts, 2000);
+
+    // 프로세스 트리거: 오늘 처음 저장한 경우에만 서버가 AI 요약을 새로 만듭니다(하루 한 번, AI 호출 포함이라 조금 더 기다립니다).
+    setTimeout(loadDailySummary, 4000);
   }
 
   // ==========================================================================
