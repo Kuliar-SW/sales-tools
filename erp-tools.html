@@ -262,14 +262,14 @@
 
   <span class="badge-note">ERP 확장판 (별도 앱) — 기존 판매관리 도구와는 독립적으로 동작해요</span>
   <h1>영업 관리 도구 — ERP 확장판</h1>
-  <p class="desc">재고·영업·구매·회계를 하나로 연결하는 확장판입니다. 기존 판매관리 도구(<code>sales-tools.html</code>)는 그대로 두고, 이 파일에서 새 모듈을 하나씩 만들어갑니다. 지금은 1단계인 "거래처 마스터"만 실제로 동작하고, 나머지는 준비 중입니다.</p>
+  <p class="desc">재고·영업·구매·회계를 하나로 연결하는 확장판입니다. 기존 판매관리 도구(<code>sales-tools.html</code>)는 그대로 두고, 이 파일에서 새 모듈을 하나씩 만들었습니다.</p>
 
   <div class="tab-bar">
     <button class="tab-btn active" id="tabBtnPartner" onclick="switchTab('partner')">거래처 마스터</button>
-    <button class="tab-btn" id="tabBtnPurchase" onclick="switchTab('purchase')">구매관리<span class="soon-dot">●준비중</span></button>
-    <button class="tab-btn" id="tabBtnInventory" onclick="switchTab('inventory')">재고관리<span class="soon-dot">●준비중</span></button>
-    <button class="tab-btn" id="tabBtnSales" onclick="switchTab('sales')">판매관리<span class="soon-dot">●준비중</span></button>
-    <button class="tab-btn" id="tabBtnAccounting" onclick="switchTab('accounting')">회계관리<span class="soon-dot">●준비중</span></button>
+    <button class="tab-btn" id="tabBtnPurchase" onclick="switchTab('purchase')">구매관리</button>
+    <button class="tab-btn" id="tabBtnSales" onclick="switchTab('sales')">판매관리</button>
+    <button class="tab-btn" id="tabBtnInventory" onclick="switchTab('inventory')">재고관리</button>
+    <button class="tab-btn" id="tabBtnAccounting" onclick="switchTab('accounting')">회계관리</button>
   </div>
 
   <!-- ==================== 거래처 마스터 탭 ==================== -->
@@ -366,61 +366,6 @@
     </div>
   </div>
 
-  <!-- ==================== 재고관리 탭 ==================== -->
-  <div id="inventoryTab" style="display:none;">
-    <p class="desc">구매관리에서 "입고확정"된 로트를 기준으로 재고를 자동 계산합니다. 기존 <code>sales-tools.html</code>의 매출과는 아직 자동으로 연동되지 않아서, 실제로 물건이 나가면(판매·소비·조정) 아래에서 직접 출고를 기록해주셔야 잔여재고가 정확해요. 거래처와 판매단가까지 함께 기록하려면 판매관리 탭을 이용하세요.</p>
-
-    <h2 class="section-title">출고 기록</h2>
-    <div class="po-form-card">
-      <div class="po-form-grid">
-        <div>
-          <label>로트 선택 (유통기한 빠른 순 추천)</label>
-          <select id="issueLotSelect"></select>
-        </div>
-        <div>
-          <label>출고수량(Kg)</label>
-          <input type="number" id="issueQtyInput" min="0" step="1" value="0">
-        </div>
-        <div>
-          <label>출고일</label>
-          <input type="date" id="issueDateInput">
-        </div>
-        <div>
-          <label>메모</label>
-          <input type="text" id="issueMemoInput" placeholder="예: OO 거래처 출고">
-        </div>
-      </div>
-      <div class="po-form-footer">
-        <span id="issueFormStatus" class="save-status"></span>
-        <button class="btn-primary btn-small" onclick="addStockMovement()">출고 등록</button>
-      </div>
-    </div>
-
-    <h2 class="section-title" style="margin-top:24px;">로트별 재고 현황</h2>
-    <div class="table-scroll">
-      <table>
-        <thead><tr>
-          <th class="idx-cell">#</th>
-          <th>제품명</th><th>로트명</th><th>공급처</th>
-          <th>제조일자</th><th>유통기한</th>
-          <th>입고수량</th><th>공급단가(원)</th><th>출고누계</th><th>잔여재고</th><th>상태</th>
-        </tr></thead>
-        <tbody id="lotSummaryTableBody"></tbody>
-      </table>
-    </div>
-
-    <h2 class="section-title" style="margin-top:24px;">출고 기록 목록</h2>
-    <div class="table-scroll">
-      <table>
-        <thead><tr>
-          <th class="idx-cell">#</th>
-          <th>제품명</th><th>로트명</th><th>수량</th><th>출고일</th><th>메모</th><th></th>
-        </tr></thead>
-        <tbody id="stockMovementTableBody"></tbody>
-      </table>
-    </div>
-  </div>
-
   <!-- ==================== 판매관리 탭 ==================== -->
   <div id="salesTab" style="display:none;">
     <p class="desc">재고관리와 같은 로트 데이터를 사용합니다. 거래처와 로트, 판매수량, 판매단가를 입력하면 그 로트의 매입원가(구매관리에서 입고확정한 단가)와 비교해 매출이익을 바로 계산해서 보여줘요. 여기서 등록한 판매는 재고관리의 "출고 기록"과 같은 테이블에 저장되기 때문에, 잔여재고에도 함께 반영됩니다.</p>
@@ -495,6 +440,61 @@
           <th>수량</th><th>판매단가</th><th>매출액</th><th>매입원가</th><th>매출이익</th><th>이익률</th><th></th>
         </tr></thead>
         <tbody id="salesTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== 재고관리 탭 ==================== -->
+  <div id="inventoryTab" style="display:none;">
+    <p class="desc">구매관리에서 "입고확정"된 로트를 기준으로 재고를 자동 계산합니다. 기존 <code>sales-tools.html</code>의 매출과는 아직 자동으로 연동되지 않아서, 실제로 물건이 나가면(판매·소비·조정) 아래에서 직접 출고를 기록해주셔야 잔여재고가 정확해요. 거래처와 판매단가까지 함께 기록하려면 판매관리 탭을 이용하세요.</p>
+
+    <h2 class="section-title">출고 기록</h2>
+    <div class="po-form-card">
+      <div class="po-form-grid">
+        <div>
+          <label>로트 선택 (유통기한 빠른 순 추천)</label>
+          <select id="issueLotSelect"></select>
+        </div>
+        <div>
+          <label>출고수량(Kg)</label>
+          <input type="number" id="issueQtyInput" min="0" step="1" value="0">
+        </div>
+        <div>
+          <label>출고일</label>
+          <input type="date" id="issueDateInput">
+        </div>
+        <div>
+          <label>메모</label>
+          <input type="text" id="issueMemoInput" placeholder="예: OO 거래처 출고">
+        </div>
+      </div>
+      <div class="po-form-footer">
+        <span id="issueFormStatus" class="save-status"></span>
+        <button class="btn-primary btn-small" onclick="addStockMovement()">출고 등록</button>
+      </div>
+    </div>
+
+    <h2 class="section-title" style="margin-top:24px;">로트별 재고 현황</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>제품명</th><th>로트명</th><th>공급처</th>
+          <th>제조일자</th><th>유통기한</th>
+          <th>입고수량</th><th>공급단가(원)</th><th>출고누계</th><th>잔여재고</th><th>상태</th>
+        </tr></thead>
+        <tbody id="lotSummaryTableBody"></tbody>
+      </table>
+    </div>
+
+    <h2 class="section-title" style="margin-top:24px;">출고 기록 목록</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>제품명</th><th>로트명</th><th>수량</th><th>출고일</th><th>메모</th><th></th>
+        </tr></thead>
+        <tbody id="stockMovementTableBody"></tbody>
       </table>
     </div>
   </div>
