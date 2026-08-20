@@ -401,7 +401,7 @@
           <th class="idx-cell">#</th>
           <th>제품명</th><th>로트명</th><th>공급처</th>
           <th>제조일자</th><th>유통기한</th>
-          <th>입고수량</th><th>공급단가(원)</th><th>출고누계</th><th>잔여재고</th><th>상태</th>
+          <th>입고수량</th><th>출고누계</th><th>잔여재고</th><th>상태</th>
         </tr></thead>
         <tbody id="lotSummaryTableBody"></tbody>
       </table>
@@ -1285,7 +1285,9 @@
         partnerName(po.vendor_id),
         po.mfg_date || '',
         po.exp_date || '',
-        (po.qty || 0).toLocaleString('ko-KR') + ' Kg'
+        (po.qty || 0).toLocaleString('ko-KR') + ' Kg',
+        issued.toLocaleString('ko-KR') + ' Kg',
+        row.remaining.toLocaleString('ko-KR') + ' Kg'
       ];
       cells.forEach((text, i) => {
         const td = document.createElement('td');
@@ -1293,30 +1295,6 @@
         td.textContent = text;
         tr.appendChild(td);
       });
-
-      // 공급단가 — 여기서 수정하면 구매관리 탭과 회계관리 탭에도 그대로 반영됩니다
-      // (구매관리 탭은 입고확정 전에만 단가를 입력할 수 있어서, 입고 후 실제 확정 단가로
-      // 바로잡거나 조정할 때는 여기서 수정하는 게 더 편해요)
-      const costTd = document.createElement('td');
-      const costInput = document.createElement('input');
-      costInput.type = 'number';
-      costInput.min = '0';
-      costInput.step = '1';
-      costInput.value = po.unit_cost || 0;
-      costInput.addEventListener('change', (e) => {
-        const v = parseFloat(e.target.value) || 0;
-        updatePoUnitCost(po.id, v);
-      });
-      costTd.appendChild(costInput);
-      tr.appendChild(costTd);
-
-      const issuedTd = document.createElement('td');
-      issuedTd.textContent = issued.toLocaleString('ko-KR') + ' Kg';
-      tr.appendChild(issuedTd);
-
-      const remainingTd = document.createElement('td');
-      remainingTd.textContent = row.remaining.toLocaleString('ko-KR') + ' Kg';
-      tr.appendChild(remainingTd);
 
       const statusTd = document.createElement('td');
       const st = lotStatusInfo(row.remaining, po.exp_date);
@@ -1339,23 +1317,6 @@
       tr.appendChild(td);
       body.appendChild(tr);
     }
-  }
-
-  async function updatePoUnitCost(id, value) {
-    const po = purchaseOrders.find(p => p.id === id);
-    if (!po) return;
-    po.unit_cost = value;
-    const { error } = await supabaseClient.from('purchase_orders')
-      .update({ unit_cost: value, updated_at: new Date().toISOString() })
-      .eq('id', id);
-    if (error) {
-      alert('공급단가 저장에 실패했어요: ' + error.message);
-      return;
-    }
-    // 구매관리 탭 표시와 회계관리 탭의 매입비용 자동 계산에도 바로 반영
-    renderPurchaseOrderTable();
-    renderInventoryViews();
-    renderAccountingTab();
   }
 
   function renderIssueLotSelect() {
