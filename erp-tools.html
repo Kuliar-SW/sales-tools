@@ -307,7 +307,7 @@
 
   <!-- ==================== 제품 마스터 탭 ==================== -->
   <div id="productMasterTab" style="display:none;">
-    <p class="desc">기존 <code>sales-tools.html</code>과 같은 <code>product_master</code> 테이블을 함께 씁니다 — 여기서 등록·수정한 제품은 그 앱의 제품 마스터에도 그대로 나타나고, 반대도 마찬가지예요. 구매관리 탭의 "제품명" 선택지가 이 목록을 기준으로 만들어집니다. 입력 후 반드시 아래 "저장" 버튼을 눌러야 저장돼요.</p>
+    <p class="desc">기존 <code>sales-tools.html</code>과 같은 <code>product_master</code> 테이블을 함께 씁니다 — 여기서 등록·수정한 제품은 그 앱의 제품 마스터에도 그대로 나타나고, 반대도 마찬가지예요. 구매관리 탭의 "제품명" 선택지가 이 목록을 기준으로 만들어집니다. "공급자" 칸은 거래처 마스터에 등록된 업체 중에서 선택하도록 되어 있어요(거래처 마스터에 없는 업체를 공급자로 쓰려면 먼저 그쪽에 등록해주세요). 입력 후 반드시 아래 "저장" 버튼을 눌러야 저장돼요.</p>
 
     <div class="toolbar">
       <div></div>
@@ -787,6 +787,7 @@
     // 남아있을 수 있어서, 저장 여부와 상관없이 로컬 값 기준으로 바로 다시 그려줍니다.
     renderPurchaseFormOptions();
     renderSaleFormOptions();
+    refreshMasterSupplierSelects();
     markPartnerStatus('저장 중...');
     const { error } = await supabaseClient
       .from('partners')
@@ -820,6 +821,7 @@
     body.innerHTML = '';
     renderPurchaseFormOptions(); // 거래처 목록이 바뀔 때마다 구매관리 탭의 공급처 선택지도 함께 갱신
     renderSaleFormOptions(); // 판매관리 탭의 고객 선택지도 함께 갱신
+    refreshMasterSupplierSelects(); // 제품 마스터 탭의 공급자 선택지도 함께 갱신
 
     partners.forEach((entry, idx) => {
       const tr = document.createElement('tr');
@@ -935,6 +937,41 @@
     masterProductNames = masterProducts.map(m => m.name).filter(Boolean);
   }
 
+  // 제품 마스터의 "공급자" 칸은 거래처 마스터(partners)에 등록된 업체 중에서 고르게 합니다.
+  // 저장 형식은 기존 sales-tools.html과 똑같이 이름 문자열(entry.supplier)이라서, 값 자체는
+  // 그대로 텍스트로 남고 선택 UI만 거래처 마스터와 연동돼요.
+  function populateSupplierSelect(select, currentValue) {
+    const vendors = partners.filter(p => (p.type || 'both') !== 'customer');
+    select.innerHTML = '';
+    const blankOpt = document.createElement('option');
+    blankOpt.value = '';
+    blankOpt.textContent = '(선택 안 함)';
+    select.appendChild(blankOpt);
+    vendors.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.name || '';
+      opt.textContent = v.name || '(이름 없음)';
+      select.appendChild(opt);
+    });
+    // 거래처 마스터에 없는 이름이 이미 저장돼 있으면(과거에 자유 입력했던 값 등)
+    // 선택지에서 사라지지 않도록 그 값도 옵션으로 추가해줍니다.
+    if (currentValue && !vendors.some(v => (v.name || '') === currentValue)) {
+      const legacyOpt = document.createElement('option');
+      legacyOpt.value = currentValue;
+      legacyOpt.textContent = currentValue + ' (거래처 마스터에 없음)';
+      select.appendChild(legacyOpt);
+    }
+    select.value = currentValue || '';
+  }
+
+  // 거래처 마스터가 바뀔 때마다(추가/이름 수정/구분 변경/삭제) 이미 화면에 그려진
+  // 공급자 select들의 선택지도 함께 갱신합니다 (현재 선택값은 유지).
+  function refreshMasterSupplierSelects() {
+    document.querySelectorAll('.master-supplier-select').forEach(select => {
+      populateSupplierSelect(select, select.value);
+    });
+  }
+
   async function loadMasterProducts(userId) {
     const { data, error } = await supabaseClient
       .from('product_master')
@@ -1023,12 +1060,11 @@
       tr.appendChild(nameTd);
 
       const supplierTd = document.createElement('td');
-      const supplierInput = document.createElement('input');
-      supplierInput.type = 'text';
-      supplierInput.placeholder = '공급자';
-      supplierInput.value = entry.supplier || '';
-      supplierInput.addEventListener('input', (e) => { entry.supplier = e.target.value; });
-      supplierTd.appendChild(supplierInput);
+      const supplierSelect = document.createElement('select');
+      supplierSelect.className = 'master-supplier-select';
+      populateSupplierSelect(supplierSelect, entry.supplier || '');
+      supplierSelect.addEventListener('change', (e) => { entry.supplier = e.target.value; });
+      supplierTd.appendChild(supplierSelect);
       tr.appendChild(supplierTd);
 
       const originTd = document.createElement('td');
