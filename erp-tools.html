@@ -159,6 +159,37 @@
   .status-text.lot-low { color: var(--danger); }
   .status-text.lot-muted { color: var(--muted); }
 
+  .month-select { display: flex; align-items: center; gap: 8px; }
+  .month-select select { width: auto; }
+
+  .summary {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .summary .block .label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .summary .block .value { font-size: 20px; font-weight: 700; }
+  .summary .block .value.income { color: var(--positive); }
+  .summary .block .value.expense { color: var(--danger); }
+  .summary .block .value.profit { color: var(--positive); }
+  .summary .block .value.profit.negative { color: var(--danger); }
+
+  .bar-chart { margin-bottom: 20px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .bar-row .bar-label { width: 90px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+  .bar-row .bar-track { flex: 1; background: #0f1115; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; height: 18px; }
+  .bar-row .bar-fill { height: 100%; border-radius: 6px 0 0 6px; }
+  .bar-row .bar-fill.income { background: var(--positive); }
+  .bar-row .bar-fill.expense { background: var(--danger); }
+  .bar-row .bar-value { width: 110px; text-align: right; font-size: 12px; color: var(--text); flex-shrink: 0; }
+
   .login-screen {
     position: fixed;
     inset: 0;
@@ -370,7 +401,7 @@
           <th class="idx-cell">#</th>
           <th>제품명</th><th>로트명</th><th>공급처</th>
           <th>제조일자</th><th>유통기한</th>
-          <th>입고수량</th><th>출고누계</th><th>잔여재고</th><th>상태</th>
+          <th>입고수량</th><th>공급단가(원)</th><th>출고누계</th><th>잔여재고</th><th>상태</th>
         </tr></thead>
         <tbody id="lotSummaryTableBody"></tbody>
       </table>
@@ -388,11 +419,81 @@
     </div>
   </div>
 
-  <!-- ==================== 회계관리 탭 (준비중) ==================== -->
+  <!-- ==================== 회계관리 탭 ==================== -->
   <div id="accountingTab" style="display:none;">
-    <div class="placeholder-card">
-      <h2>회계관리 — 관리회계(내부 손익 파악용)로 한정할 예정이에요</h2>
-      <p>정식 복식부기 대신, 매출·매입·비용을 모아 "이번 달 수입 − 지출 = 손익"을 한눈에 보여주는 간단한 대시보드로 시작해요. 공식 재무제표·세금 신고는 계속 회계 프로그램/세무사에게 맡기는 걸 전제로 합니다.</p>
+    <p class="desc">관리회계(내부 손익 파악용) 대시보드입니다. 매출은 아직 판매관리 도구와 자동 연동되지 않아서 아래에서 직접 입력해주세요. 매입비용은 구매관리에서 입고확정된 발주를 기준으로 자동 집계됩니다. 공식 재무제표·세금 신고는 계속 회계 프로그램/세무사에게 맡기는 걸 전제로 해요.</p>
+
+    <div class="toolbar">
+      <div class="month-select">
+        <label style="color:var(--muted); font-size:13px;">조회 년월</label>
+        <select id="acctYearSelect" onchange="renderAccountingTab()"></select>
+        <select id="acctMonthSelect" onchange="renderAccountingTab()"></select>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="block">
+        <div class="label">매출 (직접 입력)</div>
+        <div class="value income" id="acctIncomeValue">0원</div>
+      </div>
+      <div class="block">
+        <div class="label">매입비용 (구매관리 자동 집계)</div>
+        <div class="value expense" id="acctPurchaseExpenseValue">0원</div>
+      </div>
+      <div class="block">
+        <div class="label">기타비용 (직접 입력)</div>
+        <div class="value expense" id="acctOtherExpenseValue">0원</div>
+      </div>
+      <div class="block">
+        <div class="label">손익 (매출 − 총비용)</div>
+        <div class="value profit" id="acctProfitValue">0원</div>
+      </div>
+    </div>
+
+    <div class="bar-chart" id="acctBarChart"></div>
+
+    <h2 class="section-title">항목 추가 (매출 · 기타비용)</h2>
+    <div class="po-form-card">
+      <div class="po-form-grid">
+        <div>
+          <label>구분</label>
+          <select id="cashTypeSelect">
+            <option value="income">매출(수입)</option>
+            <option value="expense">기타비용(지출)</option>
+          </select>
+        </div>
+        <div>
+          <label>날짜</label>
+          <input type="date" id="cashDateInput">
+        </div>
+        <div>
+          <label>카테고리</label>
+          <input type="text" id="cashCategoryInput" placeholder="예: 매출, 운송비, 보관비">
+        </div>
+        <div>
+          <label>금액(원)</label>
+          <input type="number" id="cashAmountInput" min="0" step="1" value="0">
+        </div>
+        <div>
+          <label>메모</label>
+          <input type="text" id="cashMemoInput" placeholder="선택 입력">
+        </div>
+      </div>
+      <div class="po-form-footer">
+        <span id="cashFormStatus" class="save-status"></span>
+        <button class="btn-primary btn-small" onclick="addCashRecord()">항목 등록</button>
+      </div>
+    </div>
+
+    <h2 class="section-title" style="margin-top:24px;">이번 조회월 항목 목록</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>구분</th><th>날짜</th><th>카테고리</th><th>금액</th><th>메모</th><th></th>
+        </tr></thead>
+        <tbody id="cashRecordTableBody"></tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -412,10 +513,12 @@
     await loadPurchaseOrders(userId);
     await loadApRecords(userId);
     await loadStockMovements(userId);
+    await loadCashRecords(userId);
     renderPurchaseFormOptions();
     renderPurchaseOrderTable();
     renderApTable();
     renderInventoryViews();
+    renderAccountingTab();
   }
 
   function showLogin() {
@@ -475,6 +578,7 @@
     document.getElementById('loginPassword').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') handleLogin();
     });
+    initAcctYearMonthSelect();
     checkSession();
   });
 
@@ -1181,9 +1285,7 @@
         partnerName(po.vendor_id),
         po.mfg_date || '',
         po.exp_date || '',
-        (po.qty || 0).toLocaleString('ko-KR') + ' Kg',
-        issued.toLocaleString('ko-KR') + ' Kg',
-        row.remaining.toLocaleString('ko-KR') + ' Kg'
+        (po.qty || 0).toLocaleString('ko-KR') + ' Kg'
       ];
       cells.forEach((text, i) => {
         const td = document.createElement('td');
@@ -1191,6 +1293,30 @@
         td.textContent = text;
         tr.appendChild(td);
       });
+
+      // 공급단가 — 여기서 수정하면 구매관리 탭과 회계관리 탭에도 그대로 반영됩니다
+      // (구매관리 탭은 입고확정 전에만 단가를 입력할 수 있어서, 입고 후 실제 확정 단가로
+      // 바로잡거나 조정할 때는 여기서 수정하는 게 더 편해요)
+      const costTd = document.createElement('td');
+      const costInput = document.createElement('input');
+      costInput.type = 'number';
+      costInput.min = '0';
+      costInput.step = '1';
+      costInput.value = po.unit_cost || 0;
+      costInput.addEventListener('change', (e) => {
+        const v = parseFloat(e.target.value) || 0;
+        updatePoUnitCost(po.id, v);
+      });
+      costTd.appendChild(costInput);
+      tr.appendChild(costTd);
+
+      const issuedTd = document.createElement('td');
+      issuedTd.textContent = issued.toLocaleString('ko-KR') + ' Kg';
+      tr.appendChild(issuedTd);
+
+      const remainingTd = document.createElement('td');
+      remainingTd.textContent = row.remaining.toLocaleString('ko-KR') + ' Kg';
+      tr.appendChild(remainingTd);
 
       const statusTd = document.createElement('td');
       const st = lotStatusInfo(row.remaining, po.exp_date);
@@ -1213,6 +1339,23 @@
       tr.appendChild(td);
       body.appendChild(tr);
     }
+  }
+
+  async function updatePoUnitCost(id, value) {
+    const po = purchaseOrders.find(p => p.id === id);
+    if (!po) return;
+    po.unit_cost = value;
+    const { error } = await supabaseClient.from('purchase_orders')
+      .update({ unit_cost: value, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) {
+      alert('공급단가 저장에 실패했어요: ' + error.message);
+      return;
+    }
+    // 구매관리 탭 표시와 회계관리 탭의 매입비용 자동 계산에도 바로 반영
+    renderPurchaseOrderTable();
+    renderInventoryViews();
+    renderAccountingTab();
   }
 
   function renderIssueLotSelect() {
@@ -1334,6 +1477,216 @@
 
       body.appendChild(tr);
     });
+  }
+
+  // ==========================================================================
+  // ============================ 회계관리 탭 (Phase 4) ========================
+  // 관리회계(내부 손익 파악용) 범위로 한정합니다. 매출은 판매관리 도구와 아직
+  // 연동되지 않아 여기서 직접 입력합니다. 매입비용은 구매관리(purchase_orders,
+  // status='received')를 기준으로 자동 집계하며, 별도로 다시 입력하지 않습니다.
+  // ==========================================================================
+  let cashRecords = [];
+  const ACCT_YEAR_RANGE = { start: 2024, end: 2035 };
+  let acctYear = 2026;
+  let acctMonth = 8;
+
+  function initAcctYearMonthSelect() {
+    const now = new Date();
+    acctYear = now.getFullYear();
+    acctMonth = now.getMonth() + 1;
+
+    const yearSelect = document.getElementById('acctYearSelect');
+    const monthSelect = document.getElementById('acctMonthSelect');
+    if (!yearSelect || !monthSelect) return;
+
+    for (let y = ACCT_YEAR_RANGE.start; y <= ACCT_YEAR_RANGE.end; y++) {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y + '년';
+      if (y === acctYear) opt.selected = true;
+      yearSelect.appendChild(opt);
+    }
+    for (let m = 1; m <= 12; m++) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m + '월';
+      if (m === acctMonth) opt.selected = true;
+      monthSelect.appendChild(opt);
+    }
+  }
+
+  function acctPeriodKey() {
+    return `${acctYear}-${acctMonth}`;
+  }
+
+  function periodOfDate(dateStr) {
+    if (!dateStr) return null;
+    const parts = String(dateStr).split('-');
+    if (parts.length < 2) return null;
+    return `${parseInt(parts[0], 10)}-${parseInt(parts[1], 10)}`;
+  }
+
+  async function loadCashRecords(userId) {
+    const { data, error } = await supabaseClient
+      .from('cash_records')
+      .select('id, record_date, type, category, amount, memo')
+      .order('record_date', { ascending: true });
+    if (error) {
+      cashRecords = [];
+      return;
+    }
+    cashRecords = data || [];
+  }
+
+  function computePurchaseExpenseForMonth(pk) {
+    return purchaseOrders
+      .filter(po => po.status === 'received' && periodOfDate(po.received_date) === pk)
+      .reduce((sum, po) => sum + (po.qty || 0) * (po.unit_cost || 0), 0);
+  }
+
+  async function addCashRecord() {
+    const statusEl = document.getElementById('cashFormStatus');
+    const type = document.getElementById('cashTypeSelect').value;
+    const recordDate = document.getElementById('cashDateInput').value || todayStr();
+    const category = document.getElementById('cashCategoryInput').value || (type === 'income' ? '매출' : '기타비용');
+    const amount = parseFloat(document.getElementById('cashAmountInput').value) || 0;
+    const memo = document.getElementById('cashMemoInput').value || null;
+
+    if (amount <= 0) {
+      statusEl.textContent = '금액은 0보다 커야 해요.';
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    statusEl.textContent = '등록하는 중...';
+    statusEl.className = 'save-status';
+
+    const { data, error } = await supabaseClient
+      .from('cash_records')
+      .insert({ user_id: currentUserId, record_date: recordDate, type, category, amount, memo })
+      .select('id, record_date, type, category, amount, memo')
+      .single();
+
+    if (error) {
+      statusEl.textContent = '등록 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    cashRecords.push(data);
+    document.getElementById('cashAmountInput').value = 0;
+    document.getElementById('cashCategoryInput').value = '';
+    document.getElementById('cashMemoInput').value = '';
+    renderAccountingTab();
+    statusEl.textContent = '등록했어요.';
+    statusEl.className = 'save-status ok';
+  }
+
+  async function removeCashRecord(id) {
+    const { error } = await supabaseClient.from('cash_records').delete().eq('id', id);
+    if (error) {
+      alert('삭제 실패: ' + error.message);
+      return;
+    }
+    cashRecords = cashRecords.filter(r => r.id !== id);
+    renderAccountingTab();
+  }
+
+  function renderAccountingTab() {
+    const yearSelect = document.getElementById('acctYearSelect');
+    const monthSelect = document.getElementById('acctMonthSelect');
+    if (!yearSelect || !monthSelect) return;
+    acctYear = parseInt(yearSelect.value, 10) || acctYear;
+    acctMonth = parseInt(monthSelect.value, 10) || acctMonth;
+    const pk = acctPeriodKey();
+
+    const monthRecords = cashRecords.filter(r => periodOfDate(r.record_date) === pk);
+    const income = monthRecords.filter(r => r.type === 'income').reduce((s, r) => s + (r.amount || 0), 0);
+    const otherExpense = monthRecords.filter(r => r.type === 'expense').reduce((s, r) => s + (r.amount || 0), 0);
+    const purchaseExpense = computePurchaseExpenseForMonth(pk);
+    const totalExpense = otherExpense + purchaseExpense;
+    const profit = income - totalExpense;
+
+    document.getElementById('acctIncomeValue').textContent = formatWon(income);
+    document.getElementById('acctPurchaseExpenseValue').textContent = formatWon(purchaseExpense);
+    document.getElementById('acctOtherExpenseValue').textContent = formatWon(otherExpense);
+    const profitEl = document.getElementById('acctProfitValue');
+    profitEl.textContent = formatWon(profit);
+    profitEl.classList.toggle('negative', profit < 0);
+
+    // 간단한 막대그래프 (매출 vs 총비용, 상대적 길이만 표시)
+    const barChart = document.getElementById('acctBarChart');
+    if (barChart) {
+      barChart.innerHTML = '';
+      const maxVal = Math.max(income, totalExpense, 1);
+      const rows = [
+        { label: '매출', value: income, cls: 'income' },
+        { label: '총비용', value: totalExpense, cls: 'expense' }
+      ];
+      rows.forEach(row => {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'bar-row';
+        const label = document.createElement('div');
+        label.className = 'bar-label';
+        label.textContent = row.label;
+        const track = document.createElement('div');
+        track.className = 'bar-track';
+        const fill = document.createElement('div');
+        fill.className = 'bar-fill ' + row.cls;
+        fill.style.width = Math.round((row.value / maxVal) * 100) + '%';
+        track.appendChild(fill);
+        const valueEl = document.createElement('div');
+        valueEl.className = 'bar-value';
+        valueEl.textContent = formatWon(row.value);
+        rowEl.appendChild(label);
+        rowEl.appendChild(track);
+        rowEl.appendChild(valueEl);
+        barChart.appendChild(rowEl);
+      });
+    }
+
+    // 목록
+    const body = document.getElementById('cashRecordTableBody');
+    if (body) {
+      body.innerHTML = '';
+      monthRecords.forEach((r, idx) => {
+        const tr = document.createElement('tr');
+        const cells = [
+          String(idx + 1),
+          r.type === 'income' ? '매출(수입)' : '기타비용(지출)',
+          r.record_date || '',
+          r.category || '',
+          formatWon(r.amount),
+          r.memo || ''
+        ];
+        cells.forEach((text, i) => {
+          const td = document.createElement('td');
+          if (i === 0) td.className = 'idx-cell';
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        const actionTd = document.createElement('td');
+        actionTd.className = 'action-cell';
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'btn-ghost btn-small';
+        rmBtn.textContent = '×';
+        rmBtn.title = '이 항목 삭제';
+        rmBtn.onclick = () => removeCashRecord(r.id);
+        actionTd.appendChild(rmBtn);
+        tr.appendChild(actionTd);
+        body.appendChild(tr);
+      });
+      if (monthRecords.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 7;
+        td.style.color = 'var(--muted)';
+        td.style.fontSize = '12px';
+        td.textContent = '이번 조회월에는 직접 입력한 매출/기타비용 항목이 없어요.';
+        tr.appendChild(td);
+        body.appendChild(tr);
+      }
+    }
   }
 </script>
 </body>
