@@ -269,6 +269,7 @@
 
   <div class="tab-bar">
     <button class="tab-btn active" id="tabBtnPartner" onclick="switchTab('partner')">거래처 마스터</button>
+    <button class="tab-btn" id="tabBtnProductMaster" onclick="switchTab('productMaster')">제품 마스터</button>
     <button class="tab-btn" id="tabBtnPurchase" onclick="switchTab('purchase')">구매관리</button>
     <button class="tab-btn" id="tabBtnSales" onclick="switchTab('sales')">판매관리</button>
     <button class="tab-btn" id="tabBtnInventory" onclick="switchTab('inventory')">재고관리</button>
@@ -300,6 +301,30 @@
           <th></th>
         </tr></thead>
         <tbody id="partnerTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== 제품 마스터 탭 ==================== -->
+  <div id="productMasterTab" style="display:none;">
+    <p class="desc">기존 <code>sales-tools.html</code>과 같은 <code>product_master</code> 테이블을 함께 씁니다 — 여기서 등록·수정한 제품은 그 앱의 제품 마스터에도 그대로 나타나고, 반대도 마찬가지예요. 구매관리 탭의 "제품명" 선택지가 이 목록을 기준으로 만들어집니다. 입력 후 반드시 아래 "저장" 버튼을 눌러야 저장돼요.</p>
+
+    <div class="toolbar">
+      <div></div>
+      <div class="toolbar-actions">
+        <span id="masterSaveStatus" class="save-status"></span>
+        <button class="btn-ghost btn-small" onclick="addMasterProduct()">+ 제품 추가</button>
+        <button class="btn-primary btn-small" onclick="saveMasterProducts()">저장</button>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>제품명</th><th>공급자</th><th>원산지</th><th>재고부족 알림 기준(Kg)</th><th></th>
+        </tr></thead>
+        <tbody id="productMasterTableBody"></tbody>
       </table>
     </div>
   </div>
@@ -607,11 +632,12 @@
     document.getElementById('appScreen').style.display = 'block';
     document.getElementById('accountEmail').textContent = email;
     await loadPartners(userId);
-    await loadMasterProductNames(userId);
+    await loadMasterProducts(userId);
     await loadPurchaseOrders(userId);
     await loadApRecords(userId);
     await loadStockMovements(userId);
     await loadCashRecords(userId);
+    renderProductMasterTab();
     renderPurchaseFormOptions();
     renderSaleFormOptions();
     renderPurchaseOrderTable();
@@ -685,11 +711,13 @@
   // ================== 탭 전환 ==================
   function switchTab(name) {
     document.getElementById('partnerTab').style.display = name === 'partner' ? 'block' : 'none';
+    document.getElementById('productMasterTab').style.display = name === 'productMaster' ? 'block' : 'none';
     document.getElementById('purchaseTab').style.display = name === 'purchase' ? 'block' : 'none';
     document.getElementById('inventoryTab').style.display = name === 'inventory' ? 'block' : 'none';
     document.getElementById('salesTab').style.display = name === 'sales' ? 'block' : 'none';
     document.getElementById('accountingTab').style.display = name === 'accounting' ? 'block' : 'none';
     document.getElementById('tabBtnPartner').classList.toggle('active', name === 'partner');
+    document.getElementById('tabBtnProductMaster').classList.toggle('active', name === 'productMaster');
     document.getElementById('tabBtnPurchase').classList.toggle('active', name === 'purchase');
     document.getElementById('tabBtnInventory').classList.toggle('active', name === 'inventory');
     document.getElementById('tabBtnSales').classList.toggle('active', name === 'sales');
@@ -755,6 +783,10 @@
   }
 
   async function updatePartnerField(id, field, value) {
+    // 이름/구분이 바뀌면 구매관리·판매관리 탭의 공급처·고객 선택지 라벨이 옛날 값(예: "(이름 없음)")으로
+    // 남아있을 수 있어서, 저장 여부와 상관없이 로컬 값 기준으로 바로 다시 그려줍니다.
+    renderPurchaseFormOptions();
+    renderSaleFormOptions();
     markPartnerStatus('저장 중...');
     const { error } = await supabaseClient
       .from('partners')
@@ -888,13 +920,163 @@
   }
 
   // ==========================================================================
+  // ============================ 제품 마스터 탭 ================================
+  // 기존 sales-tools.html과 같은 product_master 테이블(사용자당 1행, data는
+  // jsonb 배열)을 그대로 씁니다. 그 앱과 똑같이 "저장" 버튼을 눌러야 저장되는
+  // 방식이에요(거래처 마스터처럼 칸마다 자동저장되지 않습니다) — 데이터 형식을
+  // 다르게 만들면 두 앱이 서로 다른 제품 마스터를 보게 되기 때문입니다.
+  // ==========================================================================
+  const MASTER_DEFAULT_LOW_STOCK_THRESHOLD = 5000;
+  let masterProducts = [];
+  let masterIdSeq = 1;
+  let masterProductNames = []; // 구매관리의 "제품명" 선택지는 이 배열을 참조합니다.
+
+  function syncMasterProductNames() {
+    masterProductNames = masterProducts.map(m => m.name).filter(Boolean);
+  }
+
+  async function loadMasterProducts(userId) {
+    const { data, error } = await supabaseClient
+      .from('product_master')
+      .select('data')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error || !data || !Array.isArray(data.data)) {
+      masterProducts = [];
+      syncMasterProductNames();
+      return;
+    }
+    masterProducts = data.data;
+    masterProducts.forEach(m => {
+      if (m.lowStockThreshold === undefined || m.lowStockThreshold === null || m.lowStockThreshold === '') {
+        m.lowStockThreshold = MASTER_DEFAULT_LOW_STOCK_THRESHOLD;
+      }
+    });
+    masterIdSeq = Math.max(0, ...masterProducts.map(m => m.id || 0)) + 1;
+    syncMasterProductNames();
+  }
+
+  async function saveMasterProducts() {
+    const statusEl = document.getElementById('masterSaveStatus');
+    if (!currentUserId) return;
+    statusEl.textContent = '저장 중...';
+    statusEl.className = 'save-status';
+
+    const { error } = await supabaseClient
+      .from('product_master')
+      .upsert({ user_id: currentUserId, data: masterProducts, updated_at: new Date().toISOString() });
+
+    if (error) {
+      statusEl.textContent = '저장 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    const now = new Date();
+    statusEl.textContent = `마지막 저장 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    statusEl.className = 'save-status ok';
+  }
+
+  function addMasterProduct() {
+    masterProducts.push({
+      id: masterIdSeq++,
+      name: '',
+      supplier: '',
+      origin: '',
+      lowStockThreshold: MASTER_DEFAULT_LOW_STOCK_THRESHOLD
+    });
+    renderProductMasterTab();
+  }
+
+  function removeMasterProduct(id) {
+    masterProducts = masterProducts.filter(m => m.id !== id);
+    renderProductMasterTab();
+  }
+
+  function renderProductMasterTab() {
+    const body = document.getElementById('productMasterTableBody');
+    if (!body) return;
+    body.innerHTML = '';
+    syncMasterProductNames();
+    renderPurchaseFormOptions(); // 제품명이 바뀔 때마다 구매관리 탭의 제품 선택지도 함께 갱신
+
+    masterProducts.forEach((entry, idx) => {
+      const tr = document.createElement('tr');
+
+      const idxTd = document.createElement('td');
+      idxTd.className = 'idx-cell';
+      idxTd.textContent = idx + 1;
+      tr.appendChild(idxTd);
+
+      const nameTd = document.createElement('td');
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.placeholder = '예: 요소(UREA) 46%';
+      nameInput.value = entry.name || '';
+      nameInput.addEventListener('input', (e) => { entry.name = e.target.value; });
+      nameInput.addEventListener('change', () => {
+        // 이름이 확정된 시점(포커스 해제)에 구매관리 탭 선택지를 다시 그립니다.
+        syncMasterProductNames();
+        renderPurchaseFormOptions();
+      });
+      nameTd.appendChild(nameInput);
+      tr.appendChild(nameTd);
+
+      const supplierTd = document.createElement('td');
+      const supplierInput = document.createElement('input');
+      supplierInput.type = 'text';
+      supplierInput.placeholder = '공급자';
+      supplierInput.value = entry.supplier || '';
+      supplierInput.addEventListener('input', (e) => { entry.supplier = e.target.value; });
+      supplierTd.appendChild(supplierInput);
+      tr.appendChild(supplierTd);
+
+      const originTd = document.createElement('td');
+      const originInput = document.createElement('input');
+      originInput.type = 'text';
+      originInput.placeholder = '원산지';
+      originInput.value = entry.origin || '';
+      originInput.addEventListener('input', (e) => { entry.origin = e.target.value; });
+      originTd.appendChild(originInput);
+      tr.appendChild(originTd);
+
+      const thresholdTd = document.createElement('td');
+      const thresholdInput = document.createElement('input');
+      thresholdInput.type = 'number';
+      thresholdInput.min = '0';
+      thresholdInput.step = '1';
+      thresholdInput.placeholder = String(MASTER_DEFAULT_LOW_STOCK_THRESHOLD);
+      thresholdInput.value = (entry.lowStockThreshold === undefined || entry.lowStockThreshold === null)
+        ? MASTER_DEFAULT_LOW_STOCK_THRESHOLD
+        : entry.lowStockThreshold;
+      thresholdInput.addEventListener('input', (e) => {
+        const v = parseFloat(e.target.value);
+        entry.lowStockThreshold = isNaN(v) ? MASTER_DEFAULT_LOW_STOCK_THRESHOLD : v;
+      });
+      thresholdTd.appendChild(thresholdInput);
+      tr.appendChild(thresholdTd);
+
+      const actionTd = document.createElement('td');
+      actionTd.className = 'action-cell';
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'btn-ghost btn-small';
+      rmBtn.textContent = '×';
+      rmBtn.title = '이 제품 삭제 (저장을 눌러야 반영돼요)';
+      rmBtn.onclick = () => removeMasterProduct(entry.id);
+      actionTd.appendChild(rmBtn);
+      tr.appendChild(actionTd);
+
+      body.appendChild(tr);
+    });
+  }
+
+  // ==========================================================================
   // ============================ 구매관리 탭 (Phase 2) ========================
   // 발주(purchase_orders) → 입고확정(같은 행에 로트 정보 채우고 status를 'received'로) →
   // 매입/미지급금(ap_records) 자동 생성, 3단계 흐름을 구현합니다.
   // 거래처 마스터(partners)와 제품 마스터(product_master)를 그대로 참조합니다.
   // 재고관리 탭 연동(실제 로트 생성)은 다음 단계(Phase 3)에서 이어집니다.
   // ==========================================================================
-  let masterProductNames = [];
   let purchaseOrders = [];
   let apRecords = [];
 
@@ -908,19 +1090,6 @@
   function partnerName(id) {
     const p = partners.find(x => x.id === id);
     return p ? (p.name || '(이름 없음)') : '(삭제된 거래처)';
-  }
-
-  async function loadMasterProductNames(userId) {
-    const { data, error } = await supabaseClient
-      .from('product_master')
-      .select('data')
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (error || !data || !Array.isArray(data.data)) {
-      masterProductNames = [];
-      return;
-    }
-    masterProductNames = data.data.map(m => m.name).filter(Boolean);
   }
 
   function renderPurchaseFormOptions() {
