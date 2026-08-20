@@ -180,6 +180,7 @@
   .summary .block .value.expense { color: var(--danger); }
   .summary .block .value.profit { color: var(--positive); }
   .summary .block .value.profit.negative { color: var(--danger); }
+  td.negative { color: var(--danger); font-weight: 600; }
 
   .bar-chart { margin-bottom: 20px; }
   .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -267,6 +268,7 @@
     <button class="tab-btn active" id="tabBtnPartner" onclick="switchTab('partner')">거래처 마스터</button>
     <button class="tab-btn" id="tabBtnPurchase" onclick="switchTab('purchase')">구매관리<span class="soon-dot">●준비중</span></button>
     <button class="tab-btn" id="tabBtnInventory" onclick="switchTab('inventory')">재고관리<span class="soon-dot">●준비중</span></button>
+    <button class="tab-btn" id="tabBtnSales" onclick="switchTab('sales')">판매관리<span class="soon-dot">●준비중</span></button>
     <button class="tab-btn" id="tabBtnAccounting" onclick="switchTab('accounting')">회계관리<span class="soon-dot">●준비중</span></button>
   </div>
 
@@ -366,7 +368,7 @@
 
   <!-- ==================== 재고관리 탭 ==================== -->
   <div id="inventoryTab" style="display:none;">
-    <p class="desc">구매관리에서 "입고확정"된 로트를 기준으로 재고를 자동 계산합니다. 판매관리 도구(<code>sales-tools.html</code>)의 매출과는 아직 자동으로 연동되지 않아서, 실제로 물건이 나가면(판매·소비·조정) 아래에서 직접 출고를 기록해주셔야 잔여재고가 정확해요.</p>
+    <p class="desc">구매관리에서 "입고확정"된 로트를 기준으로 재고를 자동 계산합니다. 기존 <code>sales-tools.html</code>의 매출과는 아직 자동으로 연동되지 않아서, 실제로 물건이 나가면(판매·소비·조정) 아래에서 직접 출고를 기록해주셔야 잔여재고가 정확해요. 거래처와 판매단가까지 함께 기록하려면 판매관리 탭을 이용하세요.</p>
 
     <h2 class="section-title">출고 기록</h2>
     <div class="po-form-card">
@@ -401,7 +403,7 @@
           <th class="idx-cell">#</th>
           <th>제품명</th><th>로트명</th><th>공급처</th>
           <th>제조일자</th><th>유통기한</th>
-          <th>입고수량</th><th>출고누계</th><th>잔여재고</th><th>상태</th>
+          <th>입고수량</th><th>공급단가(원)</th><th>출고누계</th><th>잔여재고</th><th>상태</th>
         </tr></thead>
         <tbody id="lotSummaryTableBody"></tbody>
       </table>
@@ -419,9 +421,87 @@
     </div>
   </div>
 
+  <!-- ==================== 판매관리 탭 ==================== -->
+  <div id="salesTab" style="display:none;">
+    <p class="desc">재고관리와 같은 로트 데이터를 사용합니다. 거래처와 로트, 판매수량, 판매단가를 입력하면 그 로트의 매입원가(구매관리에서 입고확정한 단가)와 비교해 매출이익을 바로 계산해서 보여줘요. 여기서 등록한 판매는 재고관리의 "출고 기록"과 같은 테이블에 저장되기 때문에, 잔여재고에도 함께 반영됩니다.</p>
+
+    <h2 class="section-title">판매 등록</h2>
+    <div class="po-form-card">
+      <div class="po-form-grid">
+        <div>
+          <label>거래처(고객)</label>
+          <select id="saleCustomerSelect"></select>
+        </div>
+        <div>
+          <label>로트 선택 (유통기한 빠른 순 추천)</label>
+          <select id="saleLotSelect"></select>
+        </div>
+        <div>
+          <label>판매수량(Kg)</label>
+          <input type="number" id="saleQtyInput" min="0" step="1" value="0">
+        </div>
+        <div>
+          <label>판매단가(원)</label>
+          <input type="number" id="saleUnitPriceInput" min="0" step="1" value="0">
+        </div>
+        <div>
+          <label>판매일</label>
+          <input type="date" id="saleDateInput">
+        </div>
+        <div>
+          <label>메모</label>
+          <input type="text" id="saleMemoInput" placeholder="선택 입력">
+        </div>
+      </div>
+      <div class="po-form-footer">
+        <span id="saleFormStatus" class="save-status"></span>
+        <button class="btn-primary btn-small" onclick="addSaleRecord()">판매 등록</button>
+      </div>
+    </div>
+
+    <div class="toolbar" style="margin-top:24px;">
+      <div class="month-select">
+        <label style="color:var(--muted); font-size:13px;">조회 년월</label>
+        <select id="saleYearSelect" onchange="renderSalesTable()"></select>
+        <select id="saleMonthSelect" onchange="renderSalesTable()"></select>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="block">
+        <div class="label">매출액</div>
+        <div class="value income" id="saleRevenueValue">0원</div>
+      </div>
+      <div class="block">
+        <div class="label">매출원가</div>
+        <div class="value expense" id="saleCostValue">0원</div>
+      </div>
+      <div class="block">
+        <div class="label">매출이익</div>
+        <div class="value profit" id="saleProfitValue">0원</div>
+      </div>
+      <div class="block">
+        <div class="label">평균 이익률</div>
+        <div class="value" id="saleMarginValue">0%</div>
+      </div>
+    </div>
+
+    <h2 class="section-title" style="margin-top:24px;">판매 내역 (조회월 기준)</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>판매일</th><th>거래처</th><th>제품명</th><th>로트명</th>
+          <th>수량</th><th>판매단가</th><th>매출액</th><th>매입원가</th><th>매출이익</th><th>이익률</th><th></th>
+        </tr></thead>
+        <tbody id="salesTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- ==================== 회계관리 탭 ==================== -->
   <div id="accountingTab" style="display:none;">
-    <p class="desc">관리회계(내부 손익 파악용) 대시보드입니다. 매출은 아직 판매관리 도구와 자동 연동되지 않아서 아래에서 직접 입력해주세요. 매입비용은 구매관리에서 입고확정된 발주를 기준으로 자동 집계됩니다. 공식 재무제표·세금 신고는 계속 회계 프로그램/세무사에게 맡기는 걸 전제로 해요.</p>
+    <p class="desc">관리회계(내부 손익 파악용) 대시보드입니다. 매출은 아직 판매관리 탭과 자동 연동되지 않아서 아래에서 직접 입력해주세요(판매관리 탭에서는 로트별 매출이익만 확인할 수 있어요). 매입비용은 구매관리에서 입고확정된 발주를 기준으로 자동 집계됩니다. 공식 재무제표·세금 신고는 계속 회계 프로그램/세무사에게 맡기는 걸 전제로 해요.</p>
 
     <div class="toolbar">
       <div class="month-select">
@@ -515,6 +595,7 @@
     await loadStockMovements(userId);
     await loadCashRecords(userId);
     renderPurchaseFormOptions();
+    renderSaleFormOptions();
     renderPurchaseOrderTable();
     renderApTable();
     renderInventoryViews();
@@ -579,6 +660,7 @@
       if (e.key === 'Enter') handleLogin();
     });
     initAcctYearMonthSelect();
+    initSaleYearMonthSelect();
     checkSession();
   });
 
@@ -587,10 +669,12 @@
     document.getElementById('partnerTab').style.display = name === 'partner' ? 'block' : 'none';
     document.getElementById('purchaseTab').style.display = name === 'purchase' ? 'block' : 'none';
     document.getElementById('inventoryTab').style.display = name === 'inventory' ? 'block' : 'none';
+    document.getElementById('salesTab').style.display = name === 'sales' ? 'block' : 'none';
     document.getElementById('accountingTab').style.display = name === 'accounting' ? 'block' : 'none';
     document.getElementById('tabBtnPartner').classList.toggle('active', name === 'partner');
     document.getElementById('tabBtnPurchase').classList.toggle('active', name === 'purchase');
     document.getElementById('tabBtnInventory').classList.toggle('active', name === 'inventory');
+    document.getElementById('tabBtnSales').classList.toggle('active', name === 'sales');
     document.getElementById('tabBtnAccounting').classList.toggle('active', name === 'accounting');
   }
 
@@ -682,6 +766,7 @@
     if (!body) return;
     body.innerHTML = '';
     renderPurchaseFormOptions(); // 거래처 목록이 바뀔 때마다 구매관리 탭의 공급처 선택지도 함께 갱신
+    renderSaleFormOptions(); // 판매관리 탭의 고객 선택지도 함께 갱신
 
     partners.forEach((entry, idx) => {
       const tr = document.createElement('tr');
@@ -1201,15 +1286,16 @@
   // ============================ 재고관리 탭 (Phase 3) ========================
   // "입고확정"된 발주(purchase_orders, status='received')를 로트 원장으로 삼습니다.
   // 별도의 로트 입력 기능은 없습니다 — 로트는 오직 구매관리의 입고확정을 통해서만 생깁니다.
-  // 출고는 stock_movements 테이블에 직접 기록합니다 (판매관리 도구의 매출과는
-  // 아직 자동 연동되지 않음 — 다음 단계에서 연결을 검토합니다).
+  // 출고는 stock_movements 테이블에 직접 기록합니다 (기존 sales-tools.html의
+  // 매출과는 아직 자동 연동되지 않음 — 다음 단계에서 연결을 검토합니다).
+  // customer_id/unit_price가 채워진 출고는 "판매"로 취급되어 판매관리 탭에도 나타납니다.
   // ==========================================================================
   let stockMovements = [];
 
   async function loadStockMovements(userId) {
     const { data, error } = await supabaseClient
       .from('stock_movements')
-      .select('id, purchase_order_id, qty, movement_date, memo')
+      .select('id, purchase_order_id, qty, movement_date, memo, customer_id, unit_price')
       .order('id', { ascending: true });
     if (error) {
       stockMovements = [];
@@ -1265,6 +1351,8 @@
     renderLotSummaryTable();
     renderIssueLotSelect();
     renderStockMovementTable();
+    renderSaleLotSelect();
+    renderSalesTable();
   }
 
   function renderLotSummaryTable() {
@@ -1286,8 +1374,7 @@
         po.mfg_date || '',
         po.exp_date || '',
         (po.qty || 0).toLocaleString('ko-KR') + ' Kg',
-        issued.toLocaleString('ko-KR') + ' Kg',
-        row.remaining.toLocaleString('ko-KR') + ' Kg'
+        formatWon(po.unit_cost)
       ];
       cells.forEach((text, i) => {
         const td = document.createElement('td');
@@ -1295,6 +1382,14 @@
         td.textContent = text;
         tr.appendChild(td);
       });
+
+      const issuedTd = document.createElement('td');
+      issuedTd.textContent = issued.toLocaleString('ko-KR') + ' Kg';
+      tr.appendChild(issuedTd);
+
+      const remainingTd = document.createElement('td');
+      remainingTd.textContent = row.remaining.toLocaleString('ko-KR') + ' Kg';
+      tr.appendChild(remainingTd);
 
       const statusTd = document.createElement('td');
       const st = lotStatusInfo(row.remaining, po.exp_date);
@@ -1375,7 +1470,7 @@
     const { data, error } = await supabaseClient
       .from('stock_movements')
       .insert({ user_id: currentUserId, purchase_order_id: poId, qty, movement_date: movementDate, memo })
-      .select('id, purchase_order_id, qty, movement_date, memo')
+      .select('id, purchase_order_id, qty, movement_date, memo, customer_id, unit_price')
       .single();
 
     if (error) {
@@ -1441,8 +1536,265 @@
   }
 
   // ==========================================================================
+  // ============================ 판매관리 탭 ==================================
+  // 별도의 판매 테이블을 새로 만들지 않고, 재고관리와 같은 stock_movements
+  // 테이블에 거래처(customer_id)·판매단가(unit_price)를 함께 저장합니다.
+  // 그래서 여기서 등록한 판매도 재고관리의 잔여재고 계산에 자동으로 반영되고,
+  // customer_id가 있는 출고 기록만 "판매"로 취급해 매출/원가/이익을 계산합니다.
+  // ==========================================================================
+  const SALE_YEAR_RANGE = { start: 2024, end: 2035 };
+  let saleYear = 2026;
+  let saleMonth = 8;
+
+  function initSaleYearMonthSelect() {
+    const now = new Date();
+    saleYear = now.getFullYear();
+    saleMonth = now.getMonth() + 1;
+
+    const yearSelect = document.getElementById('saleYearSelect');
+    const monthSelect = document.getElementById('saleMonthSelect');
+    if (!yearSelect || !monthSelect) return;
+
+    for (let y = SALE_YEAR_RANGE.start; y <= SALE_YEAR_RANGE.end; y++) {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y + '년';
+      if (y === saleYear) opt.selected = true;
+      yearSelect.appendChild(opt);
+    }
+    for (let m = 1; m <= 12; m++) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m + '월';
+      if (m === saleMonth) opt.selected = true;
+      monthSelect.appendChild(opt);
+    }
+  }
+
+  function salePeriodKey() {
+    return `${saleYear}-${saleMonth}`;
+  }
+
+  function renderSaleFormOptions() {
+    const customerSelect = document.getElementById('saleCustomerSelect');
+    if (!customerSelect) return;
+    const prev = customerSelect.value;
+    customerSelect.innerHTML = '';
+
+    const customers = partners.filter(p => p.type !== 'vendor');
+    if (customers.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '(거래처 마스터에서 고객을 먼저 등록해주세요)';
+      customerSelect.appendChild(opt);
+      return;
+    }
+    customers.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name || '(이름 없음)';
+      customerSelect.appendChild(opt);
+    });
+    if (customers.some(c => String(c.id) === prev)) customerSelect.value = prev;
+  }
+
+  function renderSaleLotSelect() {
+    const select = document.getElementById('saleLotSelect');
+    if (!select) return;
+    const prev = select.value;
+    select.innerHTML = '';
+
+    const available = getLotSummary().filter(row => row.remaining > 0);
+    if (available.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '(판매 가능한 재고가 없어요)';
+      select.appendChild(opt);
+      return;
+    }
+
+    available.forEach(row => {
+      const opt = document.createElement('option');
+      opt.value = row.po.id;
+      const expLabel = row.po.exp_date ? `, 유통기한 ${row.po.exp_date}` : '';
+      opt.textContent = `${row.po.product_name} · ${row.po.lot} (잔여 ${row.remaining.toLocaleString('ko-KR')}Kg${expLabel})`;
+      select.appendChild(opt);
+    });
+    if (available.some(row => String(row.po.id) === prev)) select.value = prev;
+  }
+
+  async function addSaleRecord() {
+    const statusEl = document.getElementById('saleFormStatus');
+    const customerId = parseInt(document.getElementById('saleCustomerSelect').value, 10);
+    const poId = parseInt(document.getElementById('saleLotSelect').value, 10);
+    const qty = parseFloat(document.getElementById('saleQtyInput').value) || 0;
+    const unitPrice = parseFloat(document.getElementById('saleUnitPriceInput').value) || 0;
+    const movementDate = document.getElementById('saleDateInput').value || todayStr();
+    const memo = document.getElementById('saleMemoInput').value || null;
+
+    if (!customerId || isNaN(customerId)) {
+      statusEl.textContent = '거래처(고객)를 먼저 선택해주세요.';
+      statusEl.className = 'save-status error';
+      return;
+    }
+    if (!poId || isNaN(poId)) {
+      statusEl.textContent = '판매할 로트를 먼저 선택해주세요.';
+      statusEl.className = 'save-status error';
+      return;
+    }
+    if (qty <= 0) {
+      statusEl.textContent = '판매수량은 0보다 커야 해요.';
+      statusEl.className = 'save-status error';
+      return;
+    }
+    if (unitPrice <= 0) {
+      statusEl.textContent = '판매단가는 0보다 커야 해요.';
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    const po = purchaseOrders.find(p => p.id === poId);
+    const remaining = po ? computeLotRemaining(po) : 0;
+    if (po && qty > remaining) {
+      if (!confirm(`이 로트의 잔여재고(${remaining.toLocaleString('ko-KR')}Kg)보다 많은 수량이에요. 그래도 등록할까요?`)) {
+        return;
+      }
+    }
+
+    statusEl.textContent = '등록하는 중...';
+    statusEl.className = 'save-status';
+
+    const { data, error } = await supabaseClient
+      .from('stock_movements')
+      .insert({
+        user_id: currentUserId,
+        purchase_order_id: poId,
+        qty,
+        movement_date: movementDate,
+        memo,
+        customer_id: customerId,
+        unit_price: unitPrice
+      })
+      .select('id, purchase_order_id, qty, movement_date, memo, customer_id, unit_price')
+      .single();
+
+    if (error) {
+      statusEl.textContent = '등록 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    stockMovements.push(data);
+    document.getElementById('saleQtyInput').value = 0;
+    document.getElementById('saleUnitPriceInput').value = 0;
+    document.getElementById('saleMemoInput').value = '';
+    renderInventoryViews();
+    statusEl.textContent = '판매를 등록했어요.';
+    statusEl.className = 'save-status ok';
+  }
+
+  function computeSaleProfit(m, po) {
+    const qty = m.qty || 0;
+    const revenue = qty * (m.unit_price || 0);
+    const cost = qty * (po ? (po.unit_cost || 0) : 0);
+    const profit = revenue - cost;
+    const marginPct = revenue > 0 ? (profit / revenue) * 100 : 0;
+    return { revenue, cost, profit, marginPct };
+  }
+
+  function renderSalesTable() {
+    const yearSelect = document.getElementById('saleYearSelect');
+    const monthSelect = document.getElementById('saleMonthSelect');
+    if (!yearSelect || !monthSelect) return;
+    saleYear = parseInt(yearSelect.value, 10) || saleYear;
+    saleMonth = parseInt(monthSelect.value, 10) || saleMonth;
+    const pk = salePeriodKey();
+
+    const sales = stockMovements
+      .filter(m => m.customer_id != null && periodOfDate(m.movement_date) === pk)
+      .slice()
+      .sort((a, b) => (a.movement_date || '').localeCompare(b.movement_date || ''));
+
+    const body = document.getElementById('salesTableBody');
+    if (body) {
+      body.innerHTML = '';
+      sales.forEach((m, idx) => {
+        const po = purchaseOrders.find(p => p.id === m.purchase_order_id);
+        const { revenue, cost, profit, marginPct } = computeSaleProfit(m, po);
+        const tr = document.createElement('tr');
+
+        const cells = [
+          String(idx + 1),
+          m.movement_date || '',
+          partnerName(m.customer_id),
+          po ? po.product_name : '(삭제된 로트)',
+          po ? po.lot : '',
+          (m.qty || 0).toLocaleString('ko-KR') + ' Kg',
+          formatWon(m.unit_price),
+          formatWon(revenue),
+          formatWon(cost),
+          formatWon(profit),
+          marginPct.toFixed(1) + '%'
+        ];
+        cells.forEach((text, i) => {
+          const td = document.createElement('td');
+          if (i === 0) td.className = 'idx-cell';
+          if (i === 9) td.className = profit < 0 ? 'negative' : '';
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+
+        const actionTd = document.createElement('td');
+        actionTd.className = 'action-cell';
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'btn-ghost btn-small';
+        rmBtn.textContent = '×';
+        rmBtn.title = '이 판매 기록 삭제';
+        rmBtn.onclick = () => removeStockMovement(m.id);
+        actionTd.appendChild(rmBtn);
+        tr.appendChild(actionTd);
+
+        body.appendChild(tr);
+      });
+
+      if (sales.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 12;
+        td.style.color = 'var(--muted)';
+        td.style.fontSize = '12px';
+        td.textContent = '이번 조회월에 등록된 판매가 없어요.';
+        tr.appendChild(td);
+        body.appendChild(tr);
+      }
+    }
+
+    const totals = sales.reduce((acc, m) => {
+      const po = purchaseOrders.find(p => p.id === m.purchase_order_id);
+      const r = computeSaleProfit(m, po);
+      acc.revenue += r.revenue;
+      acc.cost += r.cost;
+      acc.profit += r.profit;
+      return acc;
+    }, { revenue: 0, cost: 0, profit: 0 });
+    const avgMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
+
+    const revenueEl = document.getElementById('saleRevenueValue');
+    const costEl = document.getElementById('saleCostValue');
+    const profitEl = document.getElementById('saleProfitValue');
+    const marginEl = document.getElementById('saleMarginValue');
+    if (revenueEl) revenueEl.textContent = formatWon(totals.revenue);
+    if (costEl) costEl.textContent = formatWon(totals.cost);
+    if (profitEl) {
+      profitEl.textContent = formatWon(totals.profit);
+      profitEl.classList.toggle('negative', totals.profit < 0);
+    }
+    if (marginEl) marginEl.textContent = avgMargin.toFixed(1) + '%';
+  }
+
+  // ==========================================================================
   // ============================ 회계관리 탭 (Phase 4) ========================
-  // 관리회계(내부 손익 파악용) 범위로 한정합니다. 매출은 판매관리 도구와 아직
+  // 관리회계(내부 손익 파악용) 범위로 한정합니다. 매출은 판매관리 탭과 아직
   // 연동되지 않아 여기서 직접 입력합니다. 매입비용은 구매관리(purchase_orders,
   // status='received')를 기준으로 자동 집계하며, 별도로 다시 입력하지 않습니다.
   // ==========================================================================
