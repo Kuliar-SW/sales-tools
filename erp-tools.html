@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>영업 관리 도구 — ERP 확장판 (거래처·구매·재고·회계)</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --card2: #1d212b;
+    --border: #2a2e38;
+    --text: #eef0f3;
+    --muted: #9aa1ad;
+    --accent: #4f8cff;
+    --accent-hover: #6ba0ff;
+    --danger: #ff6b6b;
+    --positive: #46c98f;
+    --warn: #ffb648;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    padding: 32px 16px 80px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 16px; }
+  p.desc { color: var(--muted); font-size: 13px; margin: 0 0 24px; line-height: 1.6; }
+
+  .badge-note {
+    display: inline-block;
+    background: rgba(79,140,255,0.12);
+    color: var(--accent);
+    border: 1px solid rgba(79,140,255,0.3);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+
+  .tab-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: var(--muted);
+    padding: 10px 4px;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: -1px;
+    cursor: pointer;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab-btn .soon-dot { color: var(--warn); font-size: 10px; margin-left: 3px; }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  select, input[type="text"], input[type="tel"] {
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+    width: 100%;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 14px;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(255,107,107,0.35); }
+  .btn-danger:hover { background: rgba(255,107,107,0.1); }
+  .btn-small { padding: 5px 8px; font-size: 12px; }
+
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 720px; }
+  th, td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-size: 12px; font-weight: 600; }
+  td.idx-cell { width: 24px; color: var(--muted); text-align: center; }
+  td.action-cell { width: 40px; text-align: center; }
+  table input, table select { width: 100%; }
+
+  .save-status { font-size: 12px; color: var(--muted); }
+  .save-status.error { color: var(--danger); }
+  .save-status.ok { color: var(--positive); }
+
+  .placeholder-card {
+    background: var(--card);
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    text-align: center;
+  }
+  .placeholder-card h2 { font-size: 15px; margin: 0 0 8px; }
+  .placeholder-card p { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 auto; max-width: 480px; }
+  .placeholder-list { text-align: left; max-width: 480px; margin: 16px auto 0; color: var(--muted); font-size: 12px; line-height: 1.8; }
+
+  .login-screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    z-index: 100;
+    padding: 24px;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 360px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+  }
+  .login-card h1 { font-size: 18px; margin: 0 0 6px; }
+  .login-desc { color: var(--muted); font-size: 13px; margin: 0 0 20px; line-height: 1.5; }
+  .login-card label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
+  .login-card input {
+    width: 100%;
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--text);
+    outline: none;
+  }
+  .login-card input:focus { border-color: var(--accent); }
+  .login-card .btn-primary { width: 100%; margin-top: 20px; padding: 12px; font-size: 14px; }
+  .login-status { margin-top: 12px; font-size: 12px; color: var(--muted); min-height: 16px; line-height: 1.5; }
+  .login-status.error { color: var(--danger); }
+
+  .account-bar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <h1>로그인</h1>
+    <p class="login-desc">기존 판매관리 도구와 같은 계정으로 로그인합니다. (같은 Supabase 프로젝트를 공유해요)</p>
+    <label for="loginEmail">이메일</label>
+    <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="username">
+    <label for="loginPassword">비밀번호</label>
+    <input type="password" id="loginPassword" placeholder="비밀번호" autocomplete="current-password">
+    <button class="btn-primary" id="loginBtn" onclick="handleLogin()">로그인</button>
+    <div id="loginStatus" class="login-status"></div>
+  </div>
+</div>
+
+<div class="wrap" id="appScreen" style="display:none;">
+  <div class="account-bar">
+    <span id="accountEmail"></span>
+    <button class="btn-ghost btn-small" onclick="handleLogout()">로그아웃</button>
+  </div>
+
+  <span class="badge-note">ERP 확장판 (별도 앱) — 기존 판매관리 도구와는 독립적으로 동작해요</span>
+  <h1>영업 관리 도구 — ERP 확장판</h1>
+  <p class="desc">재고·영업·구매·회계를 하나로 연결하는 확장판입니다. 기존 판매관리 도구(<code>sales-tools.html</code>)는 그대로 두고, 이 파일에서 새 모듈을 하나씩 만들어갑니다. 지금은 1단계인 "거래처 마스터"만 실제로 동작하고, 나머지는 준비 중입니다.</p>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tabBtnPartner" onclick="switchTab('partner')">거래처 마스터</button>
+    <button class="tab-btn" id="tabBtnPurchase" onclick="switchTab('purchase')">구매관리<span class="soon-dot">●준비중</span></button>
+    <button class="tab-btn" id="tabBtnInventory" onclick="switchTab('inventory')">재고관리<span class="soon-dot">●준비중</span></button>
+    <button class="tab-btn" id="tabBtnAccounting" onclick="switchTab('accounting')">회계관리<span class="soon-dot">●준비중</span></button>
+  </div>
+
+  <!-- ==================== 거래처 마스터 탭 ==================== -->
+  <div id="partnerTab" style="display:block;">
+    <p class="desc">공급처(구매처)와 고객을 한 곳에 등록해두는 목록입니다. 이후 구매관리·회계관리 모듈이 이 목록을 참조합니다. 입력한 내용은 각 칸에서 포커스를 벗어나면(다른 곳을 클릭하면) 자동으로 저장돼요 — 별도 저장 버튼이 없습니다.</p>
+
+    <div class="toolbar">
+      <div></div>
+      <div class="toolbar-actions">
+        <span id="partnerStatus" class="save-status"></span>
+        <button class="btn-primary btn-small" onclick="addPartner()">+ 거래처 추가</button>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>거래처명</th>
+          <th>구분</th>
+          <th>담당자</th>
+          <th>연락처</th>
+          <th>결제조건</th>
+          <th>주소</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="partnerTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== 구매관리 탭 (준비중) ==================== -->
+  <div id="purchaseTab" style="display:none;">
+    <div class="placeholder-card">
+      <h2>구매관리 — 다음 단계에서 만들 예정이에요</h2>
+      <p>발주서를 등록하고, 입고를 확정하면 그 순간 재고관리에 로트가 생성되고, 매입(미지급금) 기록이 자동으로 남는 흐름을 계획하고 있어요.</p>
+      <div class="placeholder-list">
+        · 발주서(공급처·품목·수량·단가)<br>
+        · 입고 확정 (제조일자·유통기한 입력 → 로트 생성)<br>
+        · 매입/미지급금 기록 (결제 예정일·결제 여부)
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 재고관리 탭 (준비중) ==================== -->
+  <div id="inventoryTab" style="display:none;">
+    <div class="placeholder-card">
+      <h2>재고관리 — 판매관리 도구의 로트 로직을 이관할 예정이에요</h2>
+      <p>지금 <code>sales-tools.html</code> 판매관리 탭 안에 있는 로트/FEFO 재고 로직을 이 탭으로 옮기고, 입고는 구매관리에서, 출고는 영업에서 자동으로 반영되는 "결과를 보는 화면"으로 만들 계획이에요.</p>
+    </div>
+  </div>
+
+  <!-- ==================== 회계관리 탭 (준비중) ==================== -->
+  <div id="accountingTab" style="display:none;">
+    <div class="placeholder-card">
+      <h2>회계관리 — 관리회계(내부 손익 파악용)로 한정할 예정이에요</h2>
+      <p>정식 복식부기 대신, 매출·매입·비용을 모아 "이번 달 수입 − 지출 = 손익"을 한눈에 보여주는 간단한 대시보드로 시작해요. 공식 재무제표·세금 신고는 계속 회계 프로그램/세무사에게 맡기는 걸 전제로 합니다.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ================== 로그인 (Supabase Auth) — 기존 sales-tools.html과 같은 프로젝트를 공유 ==================
+  const SUPABASE_URL = 'https://gotfguvfzpuxeixjcvao.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_B7C64nu7bAudWoA7-EjTXw_-jMe-wME';
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  async function showApp(email, userId) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appScreen').style.display = 'block';
+    document.getElementById('accountEmail').textContent = email;
+    await loadPartners(userId);
+  }
+
+  function showLogin() {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appScreen').style.display = 'none';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('partnerStatus').textContent = '';
+  }
+
+  async function checkSession() {
+    const { data } = await supabaseClient.auth.getSession();
+    if (data.session) {
+      showApp(data.session.user.email, data.session.user.id);
+    } else {
+      showLogin();
+    }
+  }
+
+  async function handleLogin() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const statusEl = document.getElementById('loginStatus');
+    const btn = document.getElementById('loginBtn');
+
+    statusEl.textContent = '';
+    statusEl.className = 'login-status';
+
+    if (!email || !password) {
+      statusEl.textContent = '이메일과 비밀번호를 입력해주세요.';
+      statusEl.className = 'login-status error';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '로그인 중...';
+
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+    btn.disabled = false;
+    btn.textContent = '로그인';
+
+    if (error) {
+      statusEl.textContent = '로그인 실패: 이메일 또는 비밀번호를 확인해주세요.';
+      statusEl.className = 'login-status error';
+      return;
+    }
+
+    showApp(data.user.email, data.user.id);
+  }
+
+  async function handleLogout() {
+    await supabaseClient.auth.signOut();
+    showLogin();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleLogin();
+    });
+    checkSession();
+  });
+
+  // ================== 탭 전환 ==================
+  function switchTab(name) {
+    document.getElementById('partnerTab').style.display = name === 'partner' ? 'block' : 'none';
+    document.getElementById('purchaseTab').style.display = name === 'purchase' ? 'block' : 'none';
+    document.getElementById('inventoryTab').style.display = name === 'inventory' ? 'block' : 'none';
+    document.getElementById('accountingTab').style.display = name === 'accounting' ? 'block' : 'none';
+    document.getElementById('tabBtnPartner').classList.toggle('active', name === 'partner');
+    document.getElementById('tabBtnPurchase').classList.toggle('active', name === 'purchase');
+    document.getElementById('tabBtnInventory').classList.toggle('active', name === 'inventory');
+    document.getElementById('tabBtnAccounting').classList.toggle('active', name === 'accounting');
+  }
+
+  // ==========================================================================
+  // ============================ 거래처 마스터 탭 ============================
+  // (Phase 1 — 재고관리에 있던 "제품 마스터"와 달리, 여기서부터는 레코드마다
+  //  별도 행을 가지는 정규화된 테이블(partners)을 사용합니다. 저장 버튼 없이
+  //  각 칸을 수정하면 그 즉시 해당 행만 DB에 업데이트됩니다.)
+  // ==========================================================================
+  let partners = [];
+  let currentUserId = null;
+
+  function markPartnerStatus(text, cls) {
+    const el = document.getElementById('partnerStatus');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'save-status' + (cls ? ' ' + cls : '');
+  }
+
+  async function loadPartners(userId) {
+    currentUserId = userId;
+    markPartnerStatus('불러오는 중...');
+
+    const { data, error } = await supabaseClient
+      .from('partners')
+      .select('id, name, type, contact_name, phone, payment_terms, address')
+      .order('id', { ascending: true });
+
+    if (error) {
+      markPartnerStatus('불러오기 실패: ' + error.message, 'error');
+      return;
+    }
+
+    partners = data || [];
+    markPartnerStatus(partners.length ? `${partners.length}건 불러왔어요.` : '등록된 거래처가 없어요. "+ 거래처 추가"로 시작하세요.');
+    renderPartnerTab();
+  }
+
+  async function addPartner() {
+    if (!currentUserId) return;
+    markPartnerStatus('추가하는 중...');
+
+    const { data, error } = await supabaseClient
+      .from('partners')
+      .insert({ user_id: currentUserId, name: '', type: 'both' })
+      .select('id, name, type, contact_name, phone, payment_terms, address')
+      .single();
+
+    if (error) {
+      markPartnerStatus('추가 실패: ' + error.message, 'error');
+      return;
+    }
+
+    partners.push(data);
+    renderPartnerTab();
+    markPartnerStatus('새 거래처를 추가했어요. 내용을 입력해주세요.', 'ok');
+  }
+
+  async function updatePartnerField(id, field, value) {
+    markPartnerStatus('저장 중...');
+    const { error } = await supabaseClient
+      .from('partners')
+      .update({ [field]: value, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) {
+      markPartnerStatus('저장 실패: ' + error.message, 'error');
+      return;
+    }
+
+    const now = new Date();
+    markPartnerStatus(`마지막 저장 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`, 'ok');
+  }
+
+  async function removePartner(id) {
+    markPartnerStatus('삭제하는 중...');
+    const { error } = await supabaseClient.from('partners').delete().eq('id', id);
+    if (error) {
+      markPartnerStatus('삭제 실패: ' + error.message, 'error');
+      return;
+    }
+    partners = partners.filter(p => p.id !== id);
+    renderPartnerTab();
+    markPartnerStatus('삭제했어요.', 'ok');
+  }
+
+  function renderPartnerTab() {
+    const body = document.getElementById('partnerTableBody');
+    if (!body) return;
+    body.innerHTML = '';
+
+    partners.forEach((entry, idx) => {
+      const tr = document.createElement('tr');
+
+      const idxTd = document.createElement('td');
+      idxTd.className = 'idx-cell';
+      idxTd.textContent = idx + 1;
+      tr.appendChild(idxTd);
+
+      const nameTd = document.createElement('td');
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.placeholder = '예: (주)한국케미칼';
+      nameInput.value = entry.name || '';
+      nameInput.addEventListener('change', (e) => {
+        entry.name = e.target.value;
+        updatePartnerField(entry.id, 'name', entry.name);
+      });
+      nameTd.appendChild(nameInput);
+      tr.appendChild(nameTd);
+
+      const typeTd = document.createElement('td');
+      const typeSelect = document.createElement('select');
+      [['both', '고객+공급처'], ['customer', '고객'], ['vendor', '공급처']].forEach(([val, label]) => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = label;
+        if ((entry.type || 'both') === val) opt.selected = true;
+        typeSelect.appendChild(opt);
+      });
+      typeSelect.addEventListener('change', (e) => {
+        entry.type = e.target.value;
+        updatePartnerField(entry.id, 'type', entry.type);
+      });
+      typeTd.appendChild(typeSelect);
+      tr.appendChild(typeTd);
+
+      const contactTd = document.createElement('td');
+      const contactInput = document.createElement('input');
+      contactInput.type = 'text';
+      contactInput.placeholder = '담당자명';
+      contactInput.value = entry.contact_name || '';
+      contactInput.addEventListener('change', (e) => {
+        entry.contact_name = e.target.value;
+        updatePartnerField(entry.id, 'contact_name', entry.contact_name);
+      });
+      contactTd.appendChild(contactInput);
+      tr.appendChild(contactTd);
+
+      const phoneTd = document.createElement('td');
+      const phoneInput = document.createElement('input');
+      phoneInput.type = 'tel';
+      phoneInput.placeholder = '연락처';
+      phoneInput.value = entry.phone || '';
+      phoneInput.addEventListener('change', (e) => {
+        entry.phone = e.target.value;
+        updatePartnerField(entry.id, 'phone', entry.phone);
+      });
+      phoneTd.appendChild(phoneInput);
+      tr.appendChild(phoneTd);
+
+      const termsTd = document.createElement('td');
+      const termsInput = document.createElement('input');
+      termsInput.type = 'text';
+      termsInput.placeholder = '예: 월말마감 익월10일';
+      termsInput.value = entry.payment_terms || '';
+      termsInput.addEventListener('change', (e) => {
+        entry.payment_terms = e.target.value;
+        updatePartnerField(entry.id, 'payment_terms', entry.payment_terms);
+      });
+      termsTd.appendChild(termsInput);
+      tr.appendChild(termsTd);
+
+      const addressTd = document.createElement('td');
+      const addressInput = document.createElement('input');
+      addressInput.type = 'text';
+      addressInput.placeholder = '주소';
+      addressInput.value = entry.address || '';
+      addressInput.addEventListener('change', (e) => {
+        entry.address = e.target.value;
+        updatePartnerField(entry.id, 'address', entry.address);
+      });
+      addressTd.appendChild(addressInput);
+      tr.appendChild(addressTd);
+
+      const actionTd = document.createElement('td');
+      actionTd.className = 'action-cell';
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'btn-ghost btn-small';
+      rmBtn.textContent = '×';
+      rmBtn.title = '이 거래처 삭제';
+      rmBtn.onclick = () => removePartner(entry.id);
+      actionTd.appendChild(rmBtn);
+      tr.appendChild(actionTd);
+
+      body.appendChild(tr);
+    });
+  }
+</script>
+</body>
+</html>
