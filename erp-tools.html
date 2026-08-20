@@ -501,7 +501,7 @@
 
   <!-- ==================== 회계관리 탭 ==================== -->
   <div id="accountingTab" style="display:none;">
-    <p class="desc">관리회계(내부 손익 파악용) 대시보드입니다. 매출은 아직 판매관리 탭과 자동 연동되지 않아서 아래에서 직접 입력해주세요(판매관리 탭에서는 로트별 매출이익만 확인할 수 있어요). 매입비용은 구매관리에서 입고확정된 발주를 기준으로 자동 집계됩니다. 공식 재무제표·세금 신고는 계속 회계 프로그램/세무사에게 맡기는 걸 전제로 해요.</p>
+    <p class="desc">관리회계(내부 손익 파악용) 대시보드입니다. 매출은 판매관리 탭에 등록한 판매를 기준으로 자동 집계되고, 매입비용은 구매관리에서 입고확정된 발주를 기준으로 자동 집계됩니다. 판매관리를 거치지 않은 잡수입이나 기타비용(운송비·보관비 등)만 아래에서 직접 입력해주세요. 공식 재무제표·세금 신고는 계속 회계 프로그램/세무사에게 맡기는 걸 전제로 해요.</p>
 
     <div class="toolbar">
       <div class="month-select">
@@ -513,7 +513,11 @@
 
     <div class="summary">
       <div class="block">
-        <div class="label">매출 (직접 입력)</div>
+        <div class="label">매출 (판매관리 자동 집계)</div>
+        <div class="value income" id="acctSalesRevenueValue">0원</div>
+      </div>
+      <div class="block">
+        <div class="label">기타수입 (직접 입력)</div>
         <div class="value income" id="acctIncomeValue">0원</div>
       </div>
       <div class="block">
@@ -525,20 +529,20 @@
         <div class="value expense" id="acctOtherExpenseValue">0원</div>
       </div>
       <div class="block">
-        <div class="label">손익 (매출 − 총비용)</div>
+        <div class="label">손익 (매출+기타수입 − 총비용)</div>
         <div class="value profit" id="acctProfitValue">0원</div>
       </div>
     </div>
 
     <div class="bar-chart" id="acctBarChart"></div>
 
-    <h2 class="section-title">항목 추가 (매출 · 기타비용)</h2>
+    <h2 class="section-title">항목 추가 (기타수입 · 기타비용)</h2>
     <div class="po-form-card">
       <div class="po-form-grid">
         <div>
           <label>구분</label>
           <select id="cashTypeSelect">
-            <option value="income">매출(수입)</option>
+            <option value="income">기타수입</option>
             <option value="expense">기타비용(지출)</option>
           </select>
         </div>
@@ -548,7 +552,7 @@
         </div>
         <div>
           <label>카테고리</label>
-          <input type="text" id="cashCategoryInput" placeholder="예: 매출, 운송비, 보관비">
+          <input type="text" id="cashCategoryInput" placeholder="예: 잡수입, 운송비, 보관비">
         </div>
         <div>
           <label>금액(원)</label>
@@ -676,6 +680,9 @@
     document.getElementById('tabBtnInventory').classList.toggle('active', name === 'inventory');
     document.getElementById('tabBtnSales').classList.toggle('active', name === 'sales');
     document.getElementById('tabBtnAccounting').classList.toggle('active', name === 'accounting');
+    // 회계관리 탭은 매출(판매관리 자동집계)·매입비용(구매관리 자동집계)이 다른 탭에서의
+    // 작업으로 바뀔 수 있어서, 탭을 열 때마다 최신값으로 다시 계산합니다.
+    if (name === 'accounting') renderAccountingTab();
   }
 
   // ==========================================================================
@@ -1857,11 +1864,19 @@
       .reduce((sum, po) => sum + (po.qty || 0) * (po.unit_cost || 0), 0);
   }
 
+  // 판매관리 탭에 등록한 판매(stock_movements 중 customer_id가 있는 것) 기준으로
+  // 해당 조회월의 매출을 자동 집계합니다. 매입비용을 구매관리에서 자동 집계하는 것과 같은 방식이에요.
+  function computeSalesRevenueForMonth(pk) {
+    return stockMovements
+      .filter(m => m.customer_id != null && periodOfDate(m.movement_date) === pk)
+      .reduce((sum, m) => sum + (m.qty || 0) * (m.unit_price || 0), 0);
+  }
+
   async function addCashRecord() {
     const statusEl = document.getElementById('cashFormStatus');
     const type = document.getElementById('cashTypeSelect').value;
     const recordDate = document.getElementById('cashDateInput').value || todayStr();
-    const category = document.getElementById('cashCategoryInput').value || (type === 'income' ? '매출' : '기타비용');
+    const category = document.getElementById('cashCategoryInput').value || (type === 'income' ? '기타수입' : '기타비용');
     const amount = parseFloat(document.getElementById('cashAmountInput').value) || 0;
     const memo = document.getElementById('cashMemoInput').value || null;
 
@@ -1914,20 +1929,23 @@
     const pk = acctPeriodKey();
 
     const monthRecords = cashRecords.filter(r => periodOfDate(r.record_date) === pk);
-    const income = monthRecords.filter(r => r.type === 'income').reduce((s, r) => s + (r.amount || 0), 0);
+    const otherIncome = monthRecords.filter(r => r.type === 'income').reduce((s, r) => s + (r.amount || 0), 0);
     const otherExpense = monthRecords.filter(r => r.type === 'expense').reduce((s, r) => s + (r.amount || 0), 0);
+    const salesRevenue = computeSalesRevenueForMonth(pk);
     const purchaseExpense = computePurchaseExpenseForMonth(pk);
+    const income = salesRevenue + otherIncome;
     const totalExpense = otherExpense + purchaseExpense;
     const profit = income - totalExpense;
 
-    document.getElementById('acctIncomeValue').textContent = formatWon(income);
+    document.getElementById('acctSalesRevenueValue').textContent = formatWon(salesRevenue);
+    document.getElementById('acctIncomeValue').textContent = formatWon(otherIncome);
     document.getElementById('acctPurchaseExpenseValue').textContent = formatWon(purchaseExpense);
     document.getElementById('acctOtherExpenseValue').textContent = formatWon(otherExpense);
     const profitEl = document.getElementById('acctProfitValue');
     profitEl.textContent = formatWon(profit);
     profitEl.classList.toggle('negative', profit < 0);
 
-    // 간단한 막대그래프 (매출 vs 총비용, 상대적 길이만 표시)
+    // 간단한 막대그래프 (매출 vs 총비용, 상대적 길이만 표시) — 매출은 판매관리 자동집계 + 기타수입 합산
     const barChart = document.getElementById('acctBarChart');
     if (barChart) {
       barChart.innerHTML = '';
@@ -1966,7 +1984,7 @@
         const tr = document.createElement('tr');
         const cells = [
           String(idx + 1),
-          r.type === 'income' ? '매출(수입)' : '기타비용(지출)',
+          r.type === 'income' ? '기타수입' : '기타비용(지출)',
           r.record_date || '',
           r.category || '',
           formatWon(r.amount),
