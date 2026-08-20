@@ -154,6 +154,10 @@
   .status-text.unpaid { color: var(--muted); }
   .status-text.partial { color: var(--warn); }
   .status-text.paid { color: var(--positive); }
+  .status-text.lot-ok { color: var(--positive); }
+  .status-text.lot-warn { color: var(--warn); }
+  .status-text.lot-low { color: var(--danger); }
+  .status-text.lot-muted { color: var(--muted); }
 
   .login-screen {
     position: fixed;
@@ -329,11 +333,58 @@
     </div>
   </div>
 
-  <!-- ==================== 재고관리 탭 (준비중) ==================== -->
+  <!-- ==================== 재고관리 탭 ==================== -->
   <div id="inventoryTab" style="display:none;">
-    <div class="placeholder-card">
-      <h2>재고관리 — 판매관리 도구의 로트 로직을 이관할 예정이에요</h2>
-      <p>지금 <code>sales-tools.html</code> 판매관리 탭 안에 있는 로트/FEFO 재고 로직을 이 탭으로 옮기고, 입고는 구매관리에서, 출고는 영업에서 자동으로 반영되는 "결과를 보는 화면"으로 만들 계획이에요.</p>
+    <p class="desc">구매관리에서 "입고확정"된 로트를 기준으로 재고를 자동 계산합니다. 판매관리 도구(<code>sales-tools.html</code>)의 매출과는 아직 자동으로 연동되지 않아서, 실제로 물건이 나가면(판매·소비·조정) 아래에서 직접 출고를 기록해주셔야 잔여재고가 정확해요.</p>
+
+    <h2 class="section-title">출고 기록</h2>
+    <div class="po-form-card">
+      <div class="po-form-grid">
+        <div>
+          <label>로트 선택 (유통기한 빠른 순 추천)</label>
+          <select id="issueLotSelect"></select>
+        </div>
+        <div>
+          <label>출고수량(Kg)</label>
+          <input type="number" id="issueQtyInput" min="0" step="1" value="0">
+        </div>
+        <div>
+          <label>출고일</label>
+          <input type="date" id="issueDateInput">
+        </div>
+        <div>
+          <label>메모</label>
+          <input type="text" id="issueMemoInput" placeholder="예: OO 거래처 출고">
+        </div>
+      </div>
+      <div class="po-form-footer">
+        <span id="issueFormStatus" class="save-status"></span>
+        <button class="btn-primary btn-small" onclick="addStockMovement()">출고 등록</button>
+      </div>
+    </div>
+
+    <h2 class="section-title" style="margin-top:24px;">로트별 재고 현황</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>제품명</th><th>로트명</th><th>공급처</th>
+          <th>제조일자</th><th>유통기한</th>
+          <th>입고수량</th><th>출고누계</th><th>잔여재고</th><th>상태</th>
+        </tr></thead>
+        <tbody id="lotSummaryTableBody"></tbody>
+      </table>
+    </div>
+
+    <h2 class="section-title" style="margin-top:24px;">출고 기록 목록</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>제품명</th><th>로트명</th><th>수량</th><th>출고일</th><th>메모</th><th></th>
+        </tr></thead>
+        <tbody id="stockMovementTableBody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -360,9 +411,11 @@
     await loadMasterProductNames(userId);
     await loadPurchaseOrders(userId);
     await loadApRecords(userId);
+    await loadStockMovements(userId);
     renderPurchaseFormOptions();
     renderPurchaseOrderTable();
     renderApTable();
+    renderInventoryViews();
   }
 
   function showLogin() {
@@ -789,6 +842,7 @@
     }
     purchaseOrders = purchaseOrders.filter(p => p.id !== id);
     renderPurchaseOrderTable();
+    renderInventoryViews();
   }
 
   async function confirmReceive(id) {
@@ -838,6 +892,7 @@
     Object.assign(po, { status: 'received', lot, mfg_date: mfgDate, exp_date: expDate, received_date: receivedDate });
     renderPurchaseOrderTable();
     renderApTable();
+    renderInventoryViews();
   }
 
   function renderPurchaseOrderTable() {
@@ -1031,6 +1086,249 @@
         apRecords = apRecords.filter(r => r.id !== rec.id);
         renderApTable();
       };
+      actionTd.appendChild(rmBtn);
+      tr.appendChild(actionTd);
+
+      body.appendChild(tr);
+    });
+  }
+
+  // ==========================================================================
+  // ============================ 재고관리 탭 (Phase 3) ========================
+  // "입고확정"된 발주(purchase_orders, status='received')를 로트 원장으로 삼습니다.
+  // 별도의 로트 입력 기능은 없습니다 — 로트는 오직 구매관리의 입고확정을 통해서만 생깁니다.
+  // 출고는 stock_movements 테이블에 직접 기록합니다 (판매관리 도구의 매출과는
+  // 아직 자동 연동되지 않음 — 다음 단계에서 연결을 검토합니다).
+  // ==========================================================================
+  let stockMovements = [];
+
+  async function loadStockMovements(userId) {
+    const { data, error } = await supabaseClient
+      .from('stock_movements')
+      .select('id, purchase_order_id, qty, movement_date, memo')
+      .order('id', { ascending: true });
+    if (error) {
+      stockMovements = [];
+      return;
+    }
+    stockMovements = data || [];
+  }
+
+  function receivedLots() {
+    return purchaseOrders.filter(po => po.status === 'received');
+  }
+
+  function computeLotIssued(poId) {
+    return stockMovements
+      .filter(m => m.purchase_order_id === poId)
+      .reduce((sum, m) => sum + (m.qty || 0), 0);
+  }
+
+  function computeLotRemaining(po) {
+    return (po.qty || 0) - computeLotIssued(po.id);
+  }
+
+  function lotDaysUntilExpiry(expDate) {
+    if (!expDate) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const exp = new Date(expDate + 'T00:00:00');
+    return Math.round((exp - today) / 86400000);
+  }
+
+  // 잔여재고가 있는 로트를 유통기한이 빠른 순으로 정렬 (유통기한 없는 로트는 뒤로)
+  function getLotSummary() {
+    return receivedLots()
+      .map(po => ({ po, remaining: computeLotRemaining(po) }))
+      .sort((a, b) => {
+        if (!a.po.exp_date && !b.po.exp_date) return 0;
+        if (!a.po.exp_date) return 1;
+        if (!b.po.exp_date) return -1;
+        return a.po.exp_date.localeCompare(b.po.exp_date);
+      });
+  }
+
+  function lotStatusInfo(remaining, expDate) {
+    if (remaining < 0) return { text: '재고 부족(초과출고)', cls: 'lot-low' };
+    if (remaining === 0) return { text: '소진됨', cls: 'lot-muted' };
+    const days = lotDaysUntilExpiry(expDate);
+    if (days !== null && days < 0) return { text: '유통기한 지남', cls: 'lot-low' };
+    if (days !== null && days <= 30) return { text: `유통기한 ${days}일 남음`, cls: 'lot-warn' };
+    return { text: '정상', cls: 'lot-ok' };
+  }
+
+  function renderInventoryViews() {
+    renderLotSummaryTable();
+    renderIssueLotSelect();
+    renderStockMovementTable();
+  }
+
+  function renderLotSummaryTable() {
+    const body = document.getElementById('lotSummaryTableBody');
+    if (!body) return;
+    body.innerHTML = '';
+
+    const summary = getLotSummary();
+    summary.forEach((row, idx) => {
+      const po = row.po;
+      const issued = computeLotIssued(po.id);
+      const tr = document.createElement('tr');
+
+      const cells = [
+        String(idx + 1),
+        po.product_name || '',
+        po.lot || '',
+        partnerName(po.vendor_id),
+        po.mfg_date || '',
+        po.exp_date || '',
+        (po.qty || 0).toLocaleString('ko-KR') + ' Kg',
+        issued.toLocaleString('ko-KR') + ' Kg',
+        row.remaining.toLocaleString('ko-KR') + ' Kg'
+      ];
+      cells.forEach((text, i) => {
+        const td = document.createElement('td');
+        if (i === 0) td.className = 'idx-cell';
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+
+      const statusTd = document.createElement('td');
+      const st = lotStatusInfo(row.remaining, po.exp_date);
+      const badge = document.createElement('span');
+      badge.className = 'status-text ' + st.cls;
+      badge.textContent = st.text;
+      statusTd.appendChild(badge);
+      tr.appendChild(statusTd);
+
+      body.appendChild(tr);
+    });
+
+    if (summary.length === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 10;
+      td.style.color = 'var(--muted)';
+      td.style.fontSize = '12px';
+      td.textContent = '아직 입고확정된 로트가 없어요. 구매관리 탭에서 발주를 입고확정하면 여기 나타나요.';
+      tr.appendChild(td);
+      body.appendChild(tr);
+    }
+  }
+
+  function renderIssueLotSelect() {
+    const select = document.getElementById('issueLotSelect');
+    if (!select) return;
+    const prev = select.value;
+    select.innerHTML = '';
+
+    const available = getLotSummary().filter(row => row.remaining > 0);
+    if (available.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '(출고 가능한 재고가 없어요)';
+      select.appendChild(opt);
+      return;
+    }
+
+    available.forEach(row => {
+      const opt = document.createElement('option');
+      opt.value = row.po.id;
+      const expLabel = row.po.exp_date ? `, 유통기한 ${row.po.exp_date}` : '';
+      opt.textContent = `${row.po.product_name} · ${row.po.lot} (잔여 ${row.remaining.toLocaleString('ko-KR')}Kg${expLabel})`;
+      select.appendChild(opt);
+    });
+    if (available.some(row => String(row.po.id) === prev)) select.value = prev;
+  }
+
+  async function addStockMovement() {
+    const statusEl = document.getElementById('issueFormStatus');
+    const poId = parseInt(document.getElementById('issueLotSelect').value, 10);
+    const qty = parseFloat(document.getElementById('issueQtyInput').value) || 0;
+    const movementDate = document.getElementById('issueDateInput').value || todayStr();
+    const memo = document.getElementById('issueMemoInput').value || null;
+
+    if (!poId || isNaN(poId)) {
+      statusEl.textContent = '출고할 로트를 먼저 선택해주세요.';
+      statusEl.className = 'save-status error';
+      return;
+    }
+    if (qty <= 0) {
+      statusEl.textContent = '출고수량은 0보다 커야 해요.';
+      statusEl.className = 'save-status error';
+      return;
+    }
+    const po = purchaseOrders.find(p => p.id === poId);
+    const remaining = po ? computeLotRemaining(po) : 0;
+    if (po && qty > remaining) {
+      if (!confirm(`이 로트의 잔여재고(${remaining.toLocaleString('ko-KR')}Kg)보다 많은 수량이에요. 그래도 등록할까요?`)) {
+        return;
+      }
+    }
+
+    statusEl.textContent = '등록하는 중...';
+    statusEl.className = 'save-status';
+
+    const { data, error } = await supabaseClient
+      .from('stock_movements')
+      .insert({ user_id: currentUserId, purchase_order_id: poId, qty, movement_date: movementDate, memo })
+      .select('id, purchase_order_id, qty, movement_date, memo')
+      .single();
+
+    if (error) {
+      statusEl.textContent = '등록 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    stockMovements.push(data);
+    document.getElementById('issueQtyInput').value = 0;
+    document.getElementById('issueMemoInput').value = '';
+    renderInventoryViews();
+    statusEl.textContent = '출고를 기록했어요.';
+    statusEl.className = 'save-status ok';
+  }
+
+  async function removeStockMovement(id) {
+    const { error } = await supabaseClient.from('stock_movements').delete().eq('id', id);
+    if (error) {
+      alert('삭제 실패: ' + error.message);
+      return;
+    }
+    stockMovements = stockMovements.filter(m => m.id !== id);
+    renderInventoryViews();
+  }
+
+  function renderStockMovementTable() {
+    const body = document.getElementById('stockMovementTableBody');
+    if (!body) return;
+    body.innerHTML = '';
+
+    stockMovements.forEach((m, idx) => {
+      const po = purchaseOrders.find(p => p.id === m.purchase_order_id);
+      const tr = document.createElement('tr');
+
+      const cells = [
+        String(idx + 1),
+        po ? po.product_name : '(삭제된 로트)',
+        po ? po.lot : '',
+        (m.qty || 0).toLocaleString('ko-KR') + ' Kg',
+        m.movement_date || '',
+        m.memo || ''
+      ];
+      cells.forEach((text, i) => {
+        const td = document.createElement('td');
+        if (i === 0) td.className = 'idx-cell';
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+
+      const actionTd = document.createElement('td');
+      actionTd.className = 'action-cell';
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'btn-ghost btn-small';
+      rmBtn.textContent = '×';
+      rmBtn.title = '이 출고 기록 삭제';
+      rmBtn.onclick = () => removeStockMovement(m.id);
       actionTd.appendChild(rmBtn);
       tr.appendChild(actionTd);
 
