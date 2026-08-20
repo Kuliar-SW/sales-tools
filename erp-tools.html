@@ -181,6 +181,9 @@
   .summary .block .value.profit { color: var(--positive); }
   .summary .block .value.profit.negative { color: var(--danger); }
   td.negative { color: var(--danger); font-weight: 600; }
+  .lot-chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .lot-chip { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: var(--card2); border: 1px solid var(--border); white-space: nowrap; }
+  .lot-chip .lot-chip-remaining { font-weight: 600; margin-left: 4px; }
 
   .bar-chart { margin-bottom: 20px; }
   .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -472,6 +475,17 @@
         <span id="issueFormStatus" class="save-status"></span>
         <button class="btn-primary btn-small" onclick="addStockMovement()">출고 등록</button>
       </div>
+    </div>
+
+    <h2 class="section-title" style="margin-top:24px;">제품별 재고 현황</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>제품명</th><th>로트 수</th><th>총 잔여재고</th><th>로트별 잔여</th><th>상태</th>
+        </tr></thead>
+        <tbody id="productSummaryTableBody"></tbody>
+      </table>
     </div>
 
     <h2 class="section-title" style="margin-top:24px;">로트별 재고 현황</h2>
@@ -1354,7 +1368,98 @@
     return { text: '정상', cls: 'lot-ok' };
   }
 
+  // 로트별 재고(getLotSummary)를 제품명으로 묶어서, 제품 하나에 로트가 여러 개 있어도
+  // 총 잔여재고와 로트별 잔여량을 한눈에 볼 수 있게 합니다.
+  function getProductSummary() {
+    const map = new Map();
+    getLotSummary().forEach(row => {
+      const name = row.po.product_name || '(제품명 없음)';
+      if (!map.has(name)) map.set(name, []);
+      map.get(name).push(row);
+    });
+    return Array.from(map.entries())
+      .map(([name, rows]) => ({
+        name,
+        rows,
+        totalRemaining: rows.reduce((sum, r) => sum + r.remaining, 0)
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // 제품 안의 로트 상태 중 가장 시급한 상태를 대표 상태로 보여줍니다.
+  function productStatusInfo(lotStatuses) {
+    if (lotStatuses.some(s => s.cls === 'lot-low')) return { text: '재고 부족/유통기한 지남 로트 있음', cls: 'lot-low' };
+    if (lotStatuses.some(s => s.cls === 'lot-warn')) return { text: '유통기한 임박 로트 있음', cls: 'lot-warn' };
+    if (lotStatuses.length > 0 && lotStatuses.every(s => s.cls === 'lot-muted')) return { text: '전체 소진', cls: 'lot-muted' };
+    return { text: '정상', cls: 'lot-ok' };
+  }
+
+  function renderProductSummaryTable() {
+    const body = document.getElementById('productSummaryTableBody');
+    if (!body) return;
+    body.innerHTML = '';
+
+    const products = getProductSummary();
+    products.forEach((prod, idx) => {
+      const tr = document.createElement('tr');
+
+      const cells = [
+        String(idx + 1),
+        prod.name,
+        prod.rows.length.toLocaleString('ko-KR') + '개',
+        prod.totalRemaining.toLocaleString('ko-KR') + ' Kg'
+      ];
+      cells.forEach((text, i) => {
+        const td = document.createElement('td');
+        if (i === 0) td.className = 'idx-cell';
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+
+      const chipTd = document.createElement('td');
+      const chipList = document.createElement('div');
+      chipList.className = 'lot-chip-list';
+      const lotStatuses = [];
+      prod.rows.forEach(row => {
+        const st = lotStatusInfo(row.remaining, row.po.exp_date);
+        lotStatuses.push(st);
+        const chip = document.createElement('span');
+        chip.className = 'lot-chip';
+        chip.textContent = row.po.lot || '(로트명 없음)';
+        const remSpan = document.createElement('span');
+        remSpan.className = 'lot-chip-remaining status-text ' + st.cls;
+        remSpan.textContent = row.remaining.toLocaleString('ko-KR') + 'Kg';
+        chip.appendChild(remSpan);
+        chipList.appendChild(chip);
+      });
+      chipTd.appendChild(chipList);
+      tr.appendChild(chipTd);
+
+      const statusTd = document.createElement('td');
+      const pst = productStatusInfo(lotStatuses);
+      const badge = document.createElement('span');
+      badge.className = 'status-text ' + pst.cls;
+      badge.textContent = pst.text;
+      statusTd.appendChild(badge);
+      tr.appendChild(statusTd);
+
+      body.appendChild(tr);
+    });
+
+    if (products.length === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 6;
+      td.style.color = 'var(--muted)';
+      td.style.fontSize = '12px';
+      td.textContent = '아직 입고확정된 로트가 없어요. 구매관리 탭에서 발주를 입고확정하면 여기 나타나요.';
+      tr.appendChild(td);
+      body.appendChild(tr);
+    }
+  }
+
   function renderInventoryViews() {
+    renderProductSummaryTable();
     renderLotSummaryTable();
     renderIssueLotSelect();
     renderStockMovementTable();
