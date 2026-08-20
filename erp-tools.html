@@ -127,6 +127,34 @@
   .placeholder-card p { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 auto; max-width: 480px; }
   .placeholder-list { text-align: left; max-width: 480px; margin: 16px auto 0; color: var(--muted); font-size: 12px; line-height: 1.8; }
 
+  .section-title { font-size: 14px; margin: 0 0 12px; }
+  .po-form-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+  }
+  .po-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .po-form-grid label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .po-form-footer {
+    margin-top: 14px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+  }
+  table input[type="date"], table input[type="text"] { min-width: 100px; }
+  .status-text { font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .status-text.ordered { color: var(--warn); }
+  .status-text.received { color: var(--positive); }
+  .status-text.unpaid { color: var(--muted); }
+  .status-text.partial { color: var(--warn); }
+  .status-text.paid { color: var(--positive); }
+
   .login-screen {
     position: fixed;
     inset: 0;
@@ -236,16 +264,68 @@
     </div>
   </div>
 
-  <!-- ==================== 구매관리 탭 (준비중) ==================== -->
+  <!-- ==================== 구매관리 탭 ==================== -->
   <div id="purchaseTab" style="display:none;">
-    <div class="placeholder-card">
-      <h2>구매관리 — 다음 단계에서 만들 예정이에요</h2>
-      <p>발주서를 등록하고, 입고를 확정하면 그 순간 재고관리에 로트가 생성되고, 매입(미지급금) 기록이 자동으로 남는 흐름을 계획하고 있어요.</p>
-      <div class="placeholder-list">
-        · 발주서(공급처·품목·수량·단가)<br>
-        · 입고 확정 (제조일자·유통기한 입력 → 로트 생성)<br>
-        · 매입/미지급금 기록 (결제 예정일·결제 여부)
+    <p class="desc">거래처 마스터의 공급처, 제품 마스터의 제품명을 선택해서 발주서를 등록하세요. 물건이 들어오면 발주 목록에서 로트명·제조일자·유통기한을 입력하고 "입고확정"을 누르면, 그 즉시 아래 매입/미지급금 항목이 자동으로 생성됩니다. (재고관리 탭 연동은 다음 단계에서 이어집니다 — 지금은 발주·입고·매입 흐름만 다룹니다.)</p>
+
+    <div class="po-form-card">
+      <h2 class="section-title">새 발주 등록</h2>
+      <div class="po-form-grid">
+        <div>
+          <label>공급처</label>
+          <select id="poVendorSelect"></select>
+        </div>
+        <div>
+          <label>제품명</label>
+          <select id="poProductSelect"></select>
+        </div>
+        <div>
+          <label>수량(Kg)</label>
+          <input type="number" id="poQtyInput" min="0" step="1" value="0">
+        </div>
+        <div>
+          <label>단가(원)</label>
+          <input type="number" id="poUnitCostInput" min="0" step="1" value="0">
+        </div>
+        <div>
+          <label>발주일</label>
+          <input type="date" id="poOrderDateInput">
+        </div>
+        <div>
+          <label>입고예정일</label>
+          <input type="date" id="poExpectedDateInput">
+        </div>
       </div>
+      <div class="po-form-footer">
+        <span id="poFormStatus" class="save-status"></span>
+        <button class="btn-primary btn-small" onclick="addPurchaseOrder()">발주 등록</button>
+      </div>
+    </div>
+
+    <h2 class="section-title" style="margin-top:24px;">발주 목록</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>공급처</th><th>제품명</th><th>수량</th><th>단가</th><th>금액</th>
+          <th>발주일</th><th>입고예정일</th>
+          <th>로트명</th><th>제조일자</th><th>유통기한</th>
+          <th>상태</th><th></th>
+        </tr></thead>
+        <tbody id="purchaseOrderTableBody"></tbody>
+      </table>
+    </div>
+
+    <h2 class="section-title" style="margin-top:24px;">매입 / 미지급금</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th class="idx-cell">#</th>
+          <th>공급처</th><th>관련 발주</th><th>금액</th>
+          <th>지급기한</th><th>지급액</th><th>지급일</th><th>상태</th><th></th>
+        </tr></thead>
+        <tbody id="apTableBody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -277,6 +357,12 @@
     document.getElementById('appScreen').style.display = 'block';
     document.getElementById('accountEmail').textContent = email;
     await loadPartners(userId);
+    await loadMasterProductNames(userId);
+    await loadPurchaseOrders(userId);
+    await loadApRecords(userId);
+    renderPurchaseFormOptions();
+    renderPurchaseOrderTable();
+    renderApTable();
   }
 
   function showLogin() {
@@ -438,6 +524,7 @@
     const body = document.getElementById('partnerTableBody');
     if (!body) return;
     body.innerHTML = '';
+    renderPurchaseFormOptions(); // 거래처 목록이 바뀔 때마다 구매관리 탭의 공급처 선택지도 함께 갱신
 
     partners.forEach((entry, idx) => {
       const tr = document.createElement('tr');
@@ -530,6 +617,420 @@
       rmBtn.textContent = '×';
       rmBtn.title = '이 거래처 삭제';
       rmBtn.onclick = () => removePartner(entry.id);
+      actionTd.appendChild(rmBtn);
+      tr.appendChild(actionTd);
+
+      body.appendChild(tr);
+    });
+  }
+
+  // ==========================================================================
+  // ============================ 구매관리 탭 (Phase 2) ========================
+  // 발주(purchase_orders) → 입고확정(같은 행에 로트 정보 채우고 status를 'received'로) →
+  // 매입/미지급금(ap_records) 자동 생성, 3단계 흐름을 구현합니다.
+  // 거래처 마스터(partners)와 제품 마스터(product_master)를 그대로 참조합니다.
+  // 재고관리 탭 연동(실제 로트 생성)은 다음 단계(Phase 3)에서 이어집니다.
+  // ==========================================================================
+  let masterProductNames = [];
+  let purchaseOrders = [];
+  let apRecords = [];
+
+  function todayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  function formatWon(n) {
+    return Math.round(n || 0).toLocaleString('ko-KR') + '원';
+  }
+  function partnerName(id) {
+    const p = partners.find(x => x.id === id);
+    return p ? (p.name || '(이름 없음)') : '(삭제된 거래처)';
+  }
+
+  async function loadMasterProductNames(userId) {
+    const { data, error } = await supabaseClient
+      .from('product_master')
+      .select('data')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error || !data || !Array.isArray(data.data)) {
+      masterProductNames = [];
+      return;
+    }
+    masterProductNames = data.data.map(m => m.name).filter(Boolean);
+  }
+
+  function renderPurchaseFormOptions() {
+    const vendorSelect = document.getElementById('poVendorSelect');
+    const productSelect = document.getElementById('poProductSelect');
+    if (!vendorSelect || !productSelect) return;
+
+    const prevVendor = vendorSelect.value;
+    vendorSelect.innerHTML = '';
+    const vendors = partners.filter(p => (p.type || 'both') !== 'customer');
+    if (vendors.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '(거래처 마스터에서 공급처를 먼저 등록해주세요)';
+      vendorSelect.appendChild(opt);
+    } else {
+      vendors.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.textContent = v.name || '(이름 없음)';
+        vendorSelect.appendChild(opt);
+      });
+      if (vendors.some(v => String(v.id) === prevVendor)) vendorSelect.value = prevVendor;
+    }
+
+    const prevProduct = productSelect.value;
+    productSelect.innerHTML = '';
+    if (masterProductNames.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '(제품 마스터에서 제품을 먼저 등록해주세요)';
+      productSelect.appendChild(opt);
+    } else {
+      masterProductNames.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        productSelect.appendChild(opt);
+      });
+      if (masterProductNames.includes(prevProduct)) productSelect.value = prevProduct;
+    }
+  }
+
+  async function loadPurchaseOrders(userId) {
+    const { data, error } = await supabaseClient
+      .from('purchase_orders')
+      .select('id, vendor_id, product_name, qty, unit_cost, order_date, expected_date, status, lot, mfg_date, exp_date, received_date')
+      .order('id', { ascending: true });
+    if (error) {
+      purchaseOrders = [];
+      return;
+    }
+    purchaseOrders = data || [];
+  }
+
+  async function loadApRecords(userId) {
+    const { data, error } = await supabaseClient
+      .from('ap_records')
+      .select('id, vendor_id, purchase_order_id, amount, due_date, paid_amount, paid_date')
+      .order('id', { ascending: true });
+    if (error) {
+      apRecords = [];
+      return;
+    }
+    apRecords = data || [];
+  }
+
+  async function addPurchaseOrder() {
+    const statusEl = document.getElementById('poFormStatus');
+    const vendorId = parseInt(document.getElementById('poVendorSelect').value, 10);
+    const productName = document.getElementById('poProductSelect').value;
+    const qty = parseFloat(document.getElementById('poQtyInput').value) || 0;
+    const unitCost = parseFloat(document.getElementById('poUnitCostInput').value) || 0;
+    const orderDate = document.getElementById('poOrderDateInput').value || todayStr();
+    const expectedDate = document.getElementById('poExpectedDateInput').value || null;
+
+    if (!vendorId || isNaN(vendorId)) {
+      statusEl.textContent = '공급처를 먼저 선택(또는 등록)해주세요.';
+      statusEl.className = 'save-status error';
+      return;
+    }
+    if (!productName) {
+      statusEl.textContent = '제품명을 먼저 선택(또는 등록)해주세요.';
+      statusEl.className = 'save-status error';
+      return;
+    }
+    if (qty <= 0) {
+      statusEl.textContent = '수량은 0보다 커야 해요.';
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    statusEl.textContent = '등록하는 중...';
+    statusEl.className = 'save-status';
+
+    const { data, error } = await supabaseClient
+      .from('purchase_orders')
+      .insert({
+        user_id: currentUserId,
+        vendor_id: vendorId,
+        product_name: productName,
+        qty, unit_cost: unitCost,
+        order_date: orderDate,
+        expected_date: expectedDate,
+        status: 'ordered'
+      })
+      .select('id, vendor_id, product_name, qty, unit_cost, order_date, expected_date, status, lot, mfg_date, exp_date, received_date')
+      .single();
+
+    if (error) {
+      statusEl.textContent = '등록 실패: ' + error.message;
+      statusEl.className = 'save-status error';
+      return;
+    }
+
+    purchaseOrders.push(data);
+    renderPurchaseOrderTable();
+    document.getElementById('poQtyInput').value = 0;
+    document.getElementById('poUnitCostInput').value = 0;
+    statusEl.textContent = '발주를 등록했어요.';
+    statusEl.className = 'save-status ok';
+  }
+
+  async function removePurchaseOrder(id) {
+    const { error } = await supabaseClient.from('purchase_orders').delete().eq('id', id);
+    if (error) {
+      alert('삭제 실패: ' + error.message);
+      return;
+    }
+    purchaseOrders = purchaseOrders.filter(p => p.id !== id);
+    renderPurchaseOrderTable();
+  }
+
+  async function confirmReceive(id) {
+    const po = purchaseOrders.find(p => p.id === id);
+    if (!po) return;
+
+    const lot = (document.getElementById(`po-lot-${id}`).value || '').trim();
+    const mfgDate = document.getElementById(`po-mfg-${id}`).value || null;
+    const expDate = document.getElementById(`po-exp-${id}`).value || null;
+
+    if (!lot) {
+      alert('로트명을 입력한 뒤 입고확정을 눌러주세요.');
+      return;
+    }
+
+    const receivedDate = todayStr();
+
+    const { error: updateError } = await supabaseClient
+      .from('purchase_orders')
+      .update({ status: 'received', lot, mfg_date: mfgDate, exp_date: expDate, received_date: receivedDate, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (updateError) {
+      alert('입고확정 실패: ' + updateError.message);
+      return;
+    }
+
+    const amount = (po.qty || 0) * (po.unit_cost || 0);
+    const { data: apData, error: apError } = await supabaseClient
+      .from('ap_records')
+      .insert({
+        user_id: currentUserId,
+        vendor_id: po.vendor_id,
+        purchase_order_id: po.id,
+        amount,
+        paid_amount: 0
+      })
+      .select('id, vendor_id, purchase_order_id, amount, due_date, paid_amount, paid_date')
+      .single();
+
+    if (apError) {
+      alert('입고는 확정됐지만 매입 기록 생성에 실패했어요: ' + apError.message + '\n다시 새로고침한 뒤 확인해주세요.');
+    } else {
+      apRecords.push(apData);
+    }
+
+    Object.assign(po, { status: 'received', lot, mfg_date: mfgDate, exp_date: expDate, received_date: receivedDate });
+    renderPurchaseOrderTable();
+    renderApTable();
+  }
+
+  function renderPurchaseOrderTable() {
+    const body = document.getElementById('purchaseOrderTableBody');
+    if (!body) return;
+    body.innerHTML = '';
+
+    purchaseOrders.forEach((po, idx) => {
+      const tr = document.createElement('tr');
+
+      const cells = [
+        String(idx + 1),
+        partnerName(po.vendor_id),
+        po.product_name || '',
+        (po.qty || 0).toLocaleString('ko-KR') + ' Kg',
+        formatWon(po.unit_cost),
+        formatWon((po.qty || 0) * (po.unit_cost || 0)),
+        po.order_date || '',
+        po.expected_date || ''
+      ];
+      cells.forEach((text, i) => {
+        const td = document.createElement('td');
+        if (i === 0) td.className = 'idx-cell';
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+
+      const isReceived = po.status === 'received';
+
+      // 로트명
+      const lotTd = document.createElement('td');
+      if (isReceived) {
+        lotTd.textContent = po.lot || '';
+      } else {
+        const lotInput = document.createElement('input');
+        lotInput.type = 'text';
+        lotInput.placeholder = '로트명';
+        lotInput.id = `po-lot-${po.id}`;
+        lotTd.appendChild(lotInput);
+      }
+      tr.appendChild(lotTd);
+
+      // 제조일자
+      const mfgTd = document.createElement('td');
+      if (isReceived) {
+        mfgTd.textContent = po.mfg_date || '';
+      } else {
+        const mfgInput = document.createElement('input');
+        mfgInput.type = 'date';
+        mfgInput.id = `po-mfg-${po.id}`;
+        mfgTd.appendChild(mfgInput);
+      }
+      tr.appendChild(mfgTd);
+
+      // 유통기한
+      const expTd = document.createElement('td');
+      if (isReceived) {
+        expTd.textContent = po.exp_date || '';
+      } else {
+        const expInput = document.createElement('input');
+        expInput.type = 'date';
+        expInput.id = `po-exp-${po.id}`;
+        expTd.appendChild(expInput);
+      }
+      tr.appendChild(expTd);
+
+      // 상태 + 액션
+      const statusTd = document.createElement('td');
+      if (isReceived) {
+        const badge = document.createElement('span');
+        badge.className = 'status-text received';
+        badge.textContent = `입고완료 (${po.received_date || ''})`;
+        statusTd.appendChild(badge);
+      } else {
+        const receiveBtn = document.createElement('button');
+        receiveBtn.className = 'btn-primary btn-small';
+        receiveBtn.textContent = '입고확정';
+        receiveBtn.onclick = () => confirmReceive(po.id);
+        statusTd.appendChild(receiveBtn);
+      }
+      tr.appendChild(statusTd);
+
+      const actionTd = document.createElement('td');
+      actionTd.className = 'action-cell';
+      if (!isReceived) {
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'btn-ghost btn-small';
+        rmBtn.textContent = '×';
+        rmBtn.title = '이 발주 삭제';
+        rmBtn.onclick = () => removePurchaseOrder(po.id);
+        actionTd.appendChild(rmBtn);
+      }
+      tr.appendChild(actionTd);
+
+      body.appendChild(tr);
+    });
+  }
+
+  async function updateApField(id, field, value) {
+    const { error } = await supabaseClient
+      .from('ap_records')
+      .update({ [field]: value, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) alert('저장 실패: ' + error.message);
+  }
+
+  function apStatus(rec) {
+    if (rec.amount > 0 && (rec.paid_amount || 0) >= rec.amount) return { text: '지급완료', cls: 'paid' };
+    if ((rec.paid_amount || 0) > 0) return { text: '일부지급', cls: 'partial' };
+    return { text: '미지급', cls: 'unpaid' };
+  }
+
+  function renderApTable() {
+    const body = document.getElementById('apTableBody');
+    if (!body) return;
+    body.innerHTML = '';
+
+    apRecords.forEach((rec, idx) => {
+      const tr = document.createElement('tr');
+      const po = purchaseOrders.find(p => p.id === rec.purchase_order_id);
+
+      const idxTd = document.createElement('td');
+      idxTd.className = 'idx-cell';
+      idxTd.textContent = idx + 1;
+      tr.appendChild(idxTd);
+
+      const vendorTd = document.createElement('td');
+      vendorTd.textContent = partnerName(rec.vendor_id);
+      tr.appendChild(vendorTd);
+
+      const poTd = document.createElement('td');
+      poTd.textContent = po ? `${po.product_name} (${(po.qty || 0).toLocaleString('ko-KR')}Kg)` : '(발주 정보 없음)';
+      tr.appendChild(poTd);
+
+      const amountTd = document.createElement('td');
+      amountTd.textContent = formatWon(rec.amount);
+      tr.appendChild(amountTd);
+
+      const dueTd = document.createElement('td');
+      const dueInput = document.createElement('input');
+      dueInput.type = 'date';
+      dueInput.value = rec.due_date || '';
+      dueInput.addEventListener('change', (e) => {
+        rec.due_date = e.target.value || null;
+        updateApField(rec.id, 'due_date', rec.due_date);
+      });
+      dueTd.appendChild(dueInput);
+      tr.appendChild(dueTd);
+
+      const paidAmountTd = document.createElement('td');
+      const paidAmountInput = document.createElement('input');
+      paidAmountInput.type = 'number';
+      paidAmountInput.min = '0';
+      paidAmountInput.value = rec.paid_amount || 0;
+      paidAmountInput.addEventListener('change', (e) => {
+        rec.paid_amount = parseFloat(e.target.value) || 0;
+        updateApField(rec.id, 'paid_amount', rec.paid_amount);
+        renderApTable();
+      });
+      paidAmountTd.appendChild(paidAmountInput);
+      tr.appendChild(paidAmountTd);
+
+      const paidDateTd = document.createElement('td');
+      const paidDateInput = document.createElement('input');
+      paidDateInput.type = 'date';
+      paidDateInput.value = rec.paid_date || '';
+      paidDateInput.addEventListener('change', (e) => {
+        rec.paid_date = e.target.value || null;
+        updateApField(rec.id, 'paid_date', rec.paid_date);
+      });
+      paidDateTd.appendChild(paidDateInput);
+      tr.appendChild(paidDateTd);
+
+      const statusTd = document.createElement('td');
+      const st = apStatus(rec);
+      const badge = document.createElement('span');
+      badge.className = 'status-text ' + st.cls;
+      badge.textContent = st.text;
+      statusTd.appendChild(badge);
+      tr.appendChild(statusTd);
+
+      const actionTd = document.createElement('td');
+      actionTd.className = 'action-cell';
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'btn-ghost btn-small';
+      rmBtn.textContent = '×';
+      rmBtn.title = '이 매입 기록 삭제';
+      rmBtn.onclick = async () => {
+        const { error } = await supabaseClient.from('ap_records').delete().eq('id', rec.id);
+        if (error) { alert('삭제 실패: ' + error.message); return; }
+        apRecords = apRecords.filter(r => r.id !== rec.id);
+        renderApTable();
+      };
       actionTd.appendChild(rmBtn);
       tr.appendChild(actionTd);
 
