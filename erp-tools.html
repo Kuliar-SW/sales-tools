@@ -148,6 +148,8 @@
     gap: 10px;
   }
   table input[type="date"], table input[type="text"] { min-width: 100px; }
+  table input[type="number"] { min-width: 80px; }
+  table select { min-width: 110px; }
   .status-text { font-size: 12px; font-weight: 600; white-space: nowrap; }
   .status-text.ordered { color: var(--warn); }
   .status-text.received { color: var(--positive); }
@@ -583,7 +585,7 @@
         <thead><tr>
           <th class="idx-cell">#</th>
           <th>판매일</th><th>거래처</th><th>제품명</th><th>로트명</th>
-          <th>수량</th><th>판매단가</th><th>매출액</th><th>매입원가</th><th>매출이익</th><th>이익률</th><th></th>
+          <th>수량</th><th>판매단가</th><th>매출액</th><th>매입원가</th><th>매출이익</th><th>이익률</th><th>메모</th><th></th>
         </tr></thead>
         <tbody id="salesTableBody"></tbody>
       </table>
@@ -1334,7 +1336,7 @@
   async function loadPurchaseOrders(userId) {
     const { data, error } = await supabaseClient
       .from('purchase_orders')
-      .select('id, vendor_id, product_name, qty, unit_cost, order_date, expected_date, status, lot, mfg_date, exp_date, received_date')
+      .select('id, vendor_id, product_name, qty, unit_cost, order_date, expected_date, status, lot, mfg_date, exp_date, received_date, import_calc')
       .order('id', { ascending: true });
     if (error) {
       purchaseOrders = [];
@@ -1392,9 +1394,10 @@
         qty, unit_cost: unitCost,
         order_date: orderDate,
         expected_date: expectedDate,
-        status: 'ordered'
+        status: 'ordered',
+        import_calc: pendingImportCalc
       })
-      .select('id, vendor_id, product_name, qty, unit_cost, order_date, expected_date, status, lot, mfg_date, exp_date, received_date')
+      .select('id, vendor_id, product_name, qty, unit_cost, order_date, expected_date, status, lot, mfg_date, exp_date, received_date, import_calc')
       .single();
 
     if (error) {
@@ -1407,6 +1410,7 @@
     renderPurchaseOrderTable();
     document.getElementById('poQtyInput').value = 0;
     document.getElementById('poUnitCostInput').value = 0;
+    pendingImportCalc = null;
     statusEl.textContent = '발주를 등록했어요.';
     statusEl.className = 'save-status ok';
   }
@@ -1418,10 +1422,12 @@
   //   수입원가/Kg = (단가(USD) + customsFeeUSD) × 환율 + 부대비용/Kg
   // "관세청 고시환율"과 "송금환율" 두 기준으로 각각 계산해서 함께 보여줍니다(엑셀의 "Customs
   // clearance/통관기준" 행과 "Actual/송금기준" 행에 해당). 최소 판매단가(참고용)는
-  // (수입원가+창고비+배송비) × (1+목표이익률)로 계산합니다. 이 계산기는 발주 등록 폼의
-  // 단가(원) 값을 채워주는 보조 도구일 뿐이며, purchase_orders 테이블에는 항상 단가(원)
-  // 최종 값만 저장됩니다(계산 과정 자체는 저장하지 않습니다).
+  // (수입원가+창고비+배송비) × (1+목표이익률)로 계산합니다. purchase_orders에는 최종 단가(원)와
+  // 함께, 나중에 다시 열어 고칠 수 있도록 계산에 썼던 입력값도 import_calc(jsonb)에 저장합니다.
   let icIncidentalItems = null; // 최초 오픈 시 기본 4항목으로 채움. 이후에는 사용자가 수정한 값 유지.
+  let icTargetPoId = null; // null이면 "새 발주 등록" 폼 모드, id가 있으면 발주 목록의 특정 행을 다시 계산하는 모드.
+  let pendingImportCalc = null; // 새 발주 등록 폼에서 계산기를 적용한 뒤, 실제 발주 등록 시 함께 저장할 계산값 스냅샷.
+  let lastImportCalcSnapshot = null; // 가장 최근 "계산하기" 결과의 입력값 스냅샷 (적용 시 이 값을 저장합니다).
 
   function defaultIncidentalItems() {
     return [
@@ -1475,14 +1481,39 @@
     renderIncidentalRows();
   }
 
-  function openImportCostModal() {
-    if (!icIncidentalItems) icIncidentalItems = defaultIncidentalItems();
+  // poId를 주면 "발주 목록"의 특정 행을 다시 계산하는 모드로 열립니다(이전에 저장해둔
+  // import_calc 값이 있으면 그대로 불러와 채워줍니다). poId 없이 호출하면 "새 발주 등록"
+  // 폼을 위한 계산 모드입니다.
+  function openImportCostModal(poId) {
+    icTargetPoId = poId || null;
+    const targetPo = icTargetPoId ? purchaseOrders.find(p => p.id === icTargetPoId) : null;
+
+    if (targetPo && targetPo.import_calc) {
+      const c = targetPo.import_calc;
+      icIncidentalItems = Array.isArray(c.incidentalItems) && c.incidentalItems.length > 0
+        ? c.incidentalItems.map(it => ({ ...it }))
+        : defaultIncidentalItems();
+      document.getElementById('icUnitPriceUsd').value = c.unitPriceUsd ?? 0;
+      document.getElementById('icCustomsRate').value = c.customsRatePct ?? 0;
+      document.getElementById('icOfficialRate').value = c.officialRate ?? 0;
+      document.getElementById('icRemitRate').value = c.remitRate ?? 0;
+      document.getElementById('icWarehouseFee').value = c.warehouseFee ?? 200;
+      document.getElementById('icDeliveryFee').value = c.deliveryFee ?? 300;
+      document.getElementById('icProfitRate').value = c.profitRatePct ?? 30;
+    } else if (targetPo) {
+      icIncidentalItems = defaultIncidentalItems();
+    } else if (!icIncidentalItems) {
+      icIncidentalItems = defaultIncidentalItems();
+    }
     renderIncidentalRows();
     document.getElementById('icResultBox').innerHTML = '';
-    const qty = parseFloat(document.getElementById('poQtyInput').value) || 0;
+
+    const qty = targetPo ? (targetPo.qty || 0) : (parseFloat(document.getElementById('poQtyInput').value) || 0);
     const qtyHint = document.getElementById('icQtyHint');
     if (qty > 0) {
-      qtyHint.textContent = `발주 수량 ${qty.toLocaleString('ko-KR')}Kg 기준으로 계산돼요.`;
+      qtyHint.textContent = targetPo
+        ? `이 발주 건의 수량 ${qty.toLocaleString('ko-KR')}Kg 기준으로 계산돼요.`
+        : `발주 수량 ${qty.toLocaleString('ko-KR')}Kg 기준으로 계산돼요.`;
       qtyHint.className = 'save-status';
     } else {
       qtyHint.textContent = '먼저 발주 등록 폼의 수량(Kg)을 입력해주세요.';
@@ -1497,19 +1528,28 @@
 
   function calcImportCost() {
     const resultBox = document.getElementById('icResultBox');
-    const qty = parseFloat(document.getElementById('poQtyInput').value) || 0;
+    const targetPo = icTargetPoId ? purchaseOrders.find(p => p.id === icTargetPoId) : null;
+    const qty = targetPo ? (targetPo.qty || 0) : (parseFloat(document.getElementById('poQtyInput').value) || 0);
     if (qty <= 0) {
       resultBox.innerHTML = '<p class="save-status error">발주 등록 폼의 수량(Kg)을 먼저 입력해주세요.</p>';
       return;
     }
 
     const unitPriceUsd = parseFloat(document.getElementById('icUnitPriceUsd').value) || 0;
-    const customsRate = (parseFloat(document.getElementById('icCustomsRate').value) || 0) / 100;
+    const customsRatePct = parseFloat(document.getElementById('icCustomsRate').value) || 0;
+    const customsRate = customsRatePct / 100;
     const officialRate = parseFloat(document.getElementById('icOfficialRate').value) || 0;
     const remitRate = parseFloat(document.getElementById('icRemitRate').value) || 0;
     const warehouseFee = parseFloat(document.getElementById('icWarehouseFee').value) || 0;
     const deliveryFee = parseFloat(document.getElementById('icDeliveryFee').value) || 0;
-    const profitRate = (parseFloat(document.getElementById('icProfitRate').value) || 0) / 100;
+    const profitRatePct = parseFloat(document.getElementById('icProfitRate').value) || 0;
+    const profitRate = profitRatePct / 100;
+
+    lastImportCalcSnapshot = {
+      unitPriceUsd, customsRatePct, officialRate, remitRate,
+      warehouseFee, deliveryFee, profitRatePct,
+      incidentalItems: icIncidentalItems.map(it => ({ ...it }))
+    };
 
     const incidentalTotal = icIncidentalItems.reduce((sum, item) => sum + (item.amount || 0), 0);
     const incidentalPerKg = incidentalTotal / qty;
@@ -1538,8 +1578,28 @@
     resultBox.innerHTML = `<div class="ic-result-grid">${cards}</div>`;
   }
 
-  function applyImportCost(value) {
-    document.getElementById('poUnitCostInput').value = Math.round(value);
+  async function applyImportCost(value) {
+    const rounded = Math.round(value);
+
+    if (icTargetPoId) {
+      // 발주 목록의 기존 행을 다시 계산한 경우: 그 행의 단가(원)를 바로 갱신하고,
+      // 이번에 입력한 계산값도 함께 저장해서 다음에 "🧮"를 다시 누르면 이어서 수정할 수 있게 합니다.
+      const targetId = icTargetPoId;
+      const snapshot = lastImportCalcSnapshot;
+      closeImportCostModal();
+      await updatePurchaseOrderField(targetId, 'unit_cost', rounded);
+      if (snapshot) {
+        const { error } = await supabaseClient.from('purchase_orders').update({ import_calc: snapshot }).eq('id', targetId);
+        if (!error) {
+          const po = purchaseOrders.find(p => p.id === targetId);
+          if (po) po.import_calc = snapshot;
+        }
+      }
+      return;
+    }
+
+    document.getElementById('poUnitCostInput').value = rounded;
+    pendingImportCalc = lastImportCalcSnapshot;
     closeImportCostModal();
     const statusEl = document.getElementById('poFormStatus');
     statusEl.textContent = '수입원가 계산기 결과를 단가(원) 칸에 채웠어요. "발주 등록" 버튼을 눌러야 저장돼요.';
@@ -1615,60 +1675,122 @@
     purchaseOrders.forEach((po, idx) => {
       const tr = document.createElement('tr');
 
-      const cells = [
-        String(idx + 1),
-        partnerName(po.vendor_id),
-        po.product_name || '',
-        (po.qty || 0).toLocaleString('ko-KR') + ' Kg',
-        formatWon(po.unit_cost),
-        formatWon((po.qty || 0) * (po.unit_cost || 0)),
-        po.order_date || '',
-        po.expected_date || ''
-      ];
-      cells.forEach((text, i) => {
-        const td = document.createElement('td');
-        if (i === 0) td.className = 'idx-cell';
-        td.textContent = text;
-        tr.appendChild(td);
+      const idxTd = document.createElement('td');
+      idxTd.className = 'idx-cell';
+      idxTd.textContent = idx + 1;
+      tr.appendChild(idxTd);
+
+      const vendorTd = document.createElement('td');
+      vendorTd.textContent = partnerName(po.vendor_id);
+      tr.appendChild(vendorTd);
+
+      const productTd = document.createElement('td');
+      productTd.textContent = po.product_name || '';
+      tr.appendChild(productTd);
+
+      // 수량(Kg) - 수정 가능
+      const qtyTd = document.createElement('td');
+      const qtyInput = document.createElement('input');
+      qtyInput.type = 'number';
+      qtyInput.min = '0';
+      qtyInput.step = '1';
+      qtyInput.value = po.qty || 0;
+      qtyInput.addEventListener('change', (e) => {
+        const v = parseFloat(e.target.value);
+        if (isNaN(v) || v < 0) { e.target.value = po.qty || 0; return; }
+        updatePurchaseOrderField(po.id, 'qty', v);
       });
+      qtyTd.appendChild(qtyInput);
+      tr.appendChild(qtyTd);
+
+      // 단가(원) - 수정 가능 + 발주 등록 폼과 같은 수입원가 계산기를 이 행 전용으로 다시 열 수 있음
+      const costTd = document.createElement('td');
+      const costWrap = document.createElement('div');
+      costWrap.style.display = 'flex';
+      costWrap.style.gap = '4px';
+      const costInput = document.createElement('input');
+      costInput.type = 'number';
+      costInput.min = '0';
+      costInput.step = '1';
+      costInput.value = po.unit_cost || 0;
+      costInput.style.flex = '1';
+      costInput.addEventListener('change', (e) => {
+        const v = parseFloat(e.target.value);
+        if (isNaN(v) || v < 0) { e.target.value = po.unit_cost || 0; return; }
+        updatePurchaseOrderField(po.id, 'unit_cost', v);
+      });
+      const calcBtn = document.createElement('button');
+      calcBtn.type = 'button';
+      calcBtn.className = 'btn-ghost btn-small';
+      calcBtn.textContent = '🧮';
+      calcBtn.title = '수입원가 계산기로 다시 계산 (이전에 입력한 값이 있으면 그대로 불러와요)';
+      calcBtn.onclick = () => openImportCostModal(po.id);
+      costWrap.appendChild(costInput);
+      costWrap.appendChild(calcBtn);
+      costTd.appendChild(costWrap);
+      tr.appendChild(costTd);
+
+      // 금액 (수량×단가 자동 계산, 읽기전용)
+      const amountTd = document.createElement('td');
+      amountTd.textContent = formatWon((po.qty || 0) * (po.unit_cost || 0));
+      tr.appendChild(amountTd);
+
+      // 발주일 (기록 성격이라 읽기전용)
+      const orderDateTd = document.createElement('td');
+      orderDateTd.textContent = po.order_date || '';
+      tr.appendChild(orderDateTd);
+
+      // 입고예정일 - 수정 가능
+      const expectedTd = document.createElement('td');
+      const expectedInput = document.createElement('input');
+      expectedInput.type = 'date';
+      expectedInput.value = po.expected_date || '';
+      expectedInput.addEventListener('change', (e) => {
+        updatePurchaseOrderField(po.id, 'expected_date', e.target.value || null);
+      });
+      expectedTd.appendChild(expectedInput);
+      tr.appendChild(expectedTd);
 
       const isReceived = po.status === 'received';
 
-      // 로트명
+      // 로트명 (입고확정 전: 입고확정 시 채울 입력칸 / 입고확정 후: 언제든 수정 가능)
       const lotTd = document.createElement('td');
+      const lotInput = document.createElement('input');
+      lotInput.type = 'text';
+      lotInput.placeholder = '로트명';
       if (isReceived) {
-        lotTd.textContent = po.lot || '';
+        lotInput.value = po.lot || '';
+        lotInput.addEventListener('change', (e) => updatePurchaseOrderField(po.id, 'lot', e.target.value.trim()));
       } else {
-        const lotInput = document.createElement('input');
-        lotInput.type = 'text';
-        lotInput.placeholder = '로트명';
         lotInput.id = `po-lot-${po.id}`;
-        lotTd.appendChild(lotInput);
       }
+      lotTd.appendChild(lotInput);
       tr.appendChild(lotTd);
 
       // 제조일자
       const mfgTd = document.createElement('td');
+      const mfgInput = document.createElement('input');
+      mfgInput.type = 'date';
       if (isReceived) {
-        mfgTd.textContent = po.mfg_date || '';
+        mfgInput.value = po.mfg_date || '';
+        mfgInput.addEventListener('change', (e) => updatePurchaseOrderField(po.id, 'mfg_date', e.target.value || null));
       } else {
-        const mfgInput = document.createElement('input');
-        mfgInput.type = 'date';
         mfgInput.id = `po-mfg-${po.id}`;
-        mfgTd.appendChild(mfgInput);
       }
+      mfgTd.appendChild(mfgInput);
       tr.appendChild(mfgTd);
 
       // 유통기한
       const expTd = document.createElement('td');
+      const expInput = document.createElement('input');
+      expInput.type = 'date';
       if (isReceived) {
-        expTd.textContent = po.exp_date || '';
+        expInput.value = po.exp_date || '';
+        expInput.addEventListener('change', (e) => updatePurchaseOrderField(po.id, 'exp_date', e.target.value || null));
       } else {
-        const expInput = document.createElement('input');
-        expInput.type = 'date';
         expInput.id = `po-exp-${po.id}`;
-        expTd.appendChild(expInput);
       }
+      expTd.appendChild(expInput);
       tr.appendChild(expTd);
 
       // 상태 + 액션
@@ -1701,6 +1823,56 @@
 
       body.appendChild(tr);
     });
+  }
+
+  // 발주 목록의 수량/단가/입고예정일/로트명/제조일자/유통기한을 수정할 때 공통으로 쓰는 저장 함수입니다.
+  // (삭제 후 재등록이 아니라, 같은 id를 가진 행을 그대로 UPDATE합니다 — 매입/미지급금·출고 기록 등
+  // 다른 테이블이 이 발주의 id를 참조하고 있으므로 id가 바뀌면 안 됩니다.)
+  async function updatePurchaseOrderField(id, field, value) {
+    const po = purchaseOrders.find(p => p.id === id);
+    if (!po) return;
+
+    if (field === 'qty') {
+      const issued = computeLotIssued(id);
+      if (value < issued) {
+        const ok = confirm(`이미 ${issued.toLocaleString('ko-KR')}Kg가 출고(판매 포함)된 로트예요. 새 수량(${value.toLocaleString('ko-KR')}Kg)이 이보다 적으면 잔여재고가 마이너스로 표시돼요. 그래도 변경할까요?`);
+        if (!ok) { renderPurchaseOrderTable(); return; }
+      }
+    }
+
+    const { error } = await supabaseClient
+      .from('purchase_orders')
+      .update({ [field]: value, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) {
+      alert('저장 실패: ' + error.message);
+      renderPurchaseOrderTable();
+      return;
+    }
+
+    po[field] = value;
+
+    // 이미 입고확정되어 매입(AP) 기록이 만들어진 발주의 수량/단가를 고치면, 매입액도 함께 맞춰줍니다.
+    if ((field === 'qty' || field === 'unit_cost') && po.status === 'received') {
+      const ap = apRecords.find(r => r.purchase_order_id === id);
+      if (ap) {
+        const newAmount = (po.qty || 0) * (po.unit_cost || 0);
+        if (newAmount !== ap.amount) {
+          const { error: apError } = await supabaseClient
+            .from('ap_records')
+            .update({ amount: newAmount, updated_at: new Date().toISOString() })
+            .eq('id', ap.id);
+          if (!apError) {
+            ap.amount = newAmount;
+            renderApTable();
+          }
+        }
+      }
+    }
+
+    renderPurchaseOrderTable();
+    renderInventoryViews();
   }
 
   async function updateApField(id, field, value) {
@@ -2070,6 +2242,11 @@
       statusEl.className = 'save-status error';
       return;
     }
+    if (movementDate < todayStr()) {
+      if (!confirm(`출고일(${movementDate})이 오늘(${todayStr()})보다 이전 날짜예요. 과거 날짜로 그대로 등록할까요?`)) {
+        return;
+      }
+    }
     const po = purchaseOrders.find(p => p.id === poId);
     const remaining = po ? computeLotRemaining(po) : 0;
     if (po && qty > remaining) {
@@ -2111,6 +2288,20 @@
     renderInventoryViews();
   }
 
+  // 출고 기록/판매 내역(같은 stock_movements 테이블)의 한 필드를 수정할 때 공통으로 쓰는 저장
+  // 함수입니다. id를 그대로 두고 UPDATE하므로, 이 출고/판매 건이 재고 잔여량 계산에 계속
+  // 정확히 반영됩니다. 성공 시 true, 실패 시 false를 돌려줍니다.
+  async function updateStockMovementField(id, field, value) {
+    const { error } = await supabaseClient.from('stock_movements').update({ [field]: value }).eq('id', id);
+    if (error) {
+      alert('저장 실패: ' + error.message);
+      return false;
+    }
+    const m = stockMovements.find(x => x.id === id);
+    if (m) m[field] = value;
+    return true;
+  }
+
   function renderStockMovementTable() {
     const body = document.getElementById('stockMovementTableBody');
     if (!body) return;
@@ -2125,8 +2316,7 @@
         po ? po.product_name : '(삭제된 로트)',
         po ? po.lot : '',
         (m.qty || 0).toLocaleString('ko-KR') + ' Kg',
-        m.movement_date || '',
-        m.memo || ''
+        m.movement_date || ''
       ];
       cells.forEach((text, i) => {
         const td = document.createElement('td');
@@ -2134,6 +2324,18 @@
         td.textContent = text;
         tr.appendChild(td);
       });
+
+      // 메모/출고 사유 - 수정 가능
+      const memoTd = document.createElement('td');
+      const memoInput = document.createElement('input');
+      memoInput.type = 'text';
+      memoInput.placeholder = '예: OO 거래처 출고';
+      memoInput.value = m.memo || '';
+      memoInput.addEventListener('change', (e) => {
+        updateStockMovementField(m.id, 'memo', e.target.value || null);
+      });
+      memoTd.appendChild(memoInput);
+      tr.appendChild(memoTd);
 
       const actionTd = document.createElement('td');
       actionTd.className = 'action-cell';
@@ -2266,6 +2468,11 @@
       statusEl.className = 'save-status error';
       return;
     }
+    if (movementDate < todayStr()) {
+      if (!confirm(`판매일(${movementDate})이 오늘(${todayStr()})보다 이전 날짜예요. 과거 날짜로 그대로 등록할까요?`)) {
+        return;
+      }
+    }
 
     const po = purchaseOrders.find(p => p.id === poId);
     const remaining = po ? computeLotRemaining(po) : 0;
@@ -2337,26 +2544,125 @@
         const { revenue, cost, profit, marginPct } = computeSaleProfit(m, po);
         const tr = document.createElement('tr');
 
-        const cells = [
-          String(idx + 1),
-          m.movement_date || '',
-          partnerName(m.customer_id),
-          po ? po.product_name : '(삭제된 로트)',
-          po ? po.lot : '',
-          (m.qty || 0).toLocaleString('ko-KR') + ' Kg',
-          formatWon(m.unit_price),
-          formatWon(revenue),
-          formatWon(cost),
-          formatWon(profit),
-          marginPct.toFixed(1) + '%'
-        ];
-        cells.forEach((text, i) => {
-          const td = document.createElement('td');
-          if (i === 0) td.className = 'idx-cell';
-          if (i === 9) td.className = profit < 0 ? 'negative' : '';
-          td.textContent = text;
-          tr.appendChild(td);
+        const idxTd = document.createElement('td');
+        idxTd.className = 'idx-cell';
+        idxTd.textContent = idx + 1;
+        tr.appendChild(idxTd);
+
+        // 판매일 - 수정 가능
+        const dateTd = document.createElement('td');
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.value = m.movement_date || '';
+        dateInput.addEventListener('change', (e) => {
+          const v = e.target.value || todayStr();
+          updateStockMovementField(m.id, 'movement_date', v).then(ok => { if (ok) renderInventoryViews(); });
         });
+        dateTd.appendChild(dateInput);
+        tr.appendChild(dateTd);
+
+        // 거래처(고객) - 수정 가능
+        const customerTd = document.createElement('td');
+        const customerSelect = document.createElement('select');
+        const customers = partners.filter(p => p.type !== 'vendor');
+        customers.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.name || '(이름 없음)';
+          customerSelect.appendChild(opt);
+        });
+        if (customers.some(c => c.id === m.customer_id)) {
+          customerSelect.value = m.customer_id;
+        } else {
+          // 이미 삭제되었거나 목록에 없는 거래처: 값을 잃지 않도록 임시 옵션을 추가해둡니다.
+          const opt = document.createElement('option');
+          opt.value = m.customer_id;
+          opt.textContent = partnerName(m.customer_id) + ' (거래처 마스터에 없음)';
+          customerSelect.appendChild(opt);
+          customerSelect.value = m.customer_id;
+        }
+        customerSelect.addEventListener('change', (e) => {
+          const v = parseInt(e.target.value, 10);
+          updateStockMovementField(m.id, 'customer_id', v).then(ok => { if (ok) renderInventoryViews(); });
+        });
+        customerTd.appendChild(customerSelect);
+        tr.appendChild(customerTd);
+
+        const productTd = document.createElement('td');
+        productTd.textContent = po ? po.product_name : '(삭제된 로트)';
+        tr.appendChild(productTd);
+
+        const lotTd = document.createElement('td');
+        lotTd.textContent = po ? po.lot : '';
+        tr.appendChild(lotTd);
+
+        // 판매수량 - 수정 가능 (잔여재고보다 많아지면 확인)
+        const qtyTd = document.createElement('td');
+        const qtyInput = document.createElement('input');
+        qtyInput.type = 'number';
+        qtyInput.min = '0';
+        qtyInput.step = '1';
+        qtyInput.value = m.qty || 0;
+        qtyInput.addEventListener('change', (e) => {
+          const v = parseFloat(e.target.value);
+          if (isNaN(v) || v <= 0) { e.target.value = m.qty || 0; return; }
+          if (po) {
+            const remainingExcludingSelf = computeLotRemaining(po) + (m.qty || 0);
+            if (v > remainingExcludingSelf) {
+              if (!confirm(`이 로트의 잔여재고(${remainingExcludingSelf.toLocaleString('ko-KR')}Kg)보다 많은 수량이에요. 그래도 변경할까요?`)) {
+                e.target.value = m.qty || 0;
+                return;
+              }
+            }
+          }
+          updateStockMovementField(m.id, 'qty', v).then(ok => { if (ok) renderInventoryViews(); });
+        });
+        qtyTd.appendChild(qtyInput);
+        tr.appendChild(qtyTd);
+
+        // 판매단가 - 수정 가능
+        const priceTd = document.createElement('td');
+        const priceInput = document.createElement('input');
+        priceInput.type = 'number';
+        priceInput.min = '0';
+        priceInput.step = '1';
+        priceInput.value = m.unit_price || 0;
+        priceInput.addEventListener('change', (e) => {
+          const v = parseFloat(e.target.value);
+          if (isNaN(v) || v < 0) { e.target.value = m.unit_price || 0; return; }
+          updateStockMovementField(m.id, 'unit_price', v).then(ok => { if (ok) renderInventoryViews(); });
+        });
+        priceTd.appendChild(priceInput);
+        tr.appendChild(priceTd);
+
+        const revenueTd = document.createElement('td');
+        revenueTd.textContent = formatWon(revenue);
+        tr.appendChild(revenueTd);
+
+        const costTd = document.createElement('td');
+        costTd.textContent = formatWon(cost);
+        tr.appendChild(costTd);
+
+        const profitTd = document.createElement('td');
+        profitTd.textContent = formatWon(profit);
+        profitTd.className = profit < 0 ? 'negative' : '';
+        tr.appendChild(profitTd);
+
+        const marginTd = document.createElement('td');
+        marginTd.textContent = marginPct.toFixed(1) + '%';
+        tr.appendChild(marginTd);
+
+        // 메모 - 수정 가능
+        const memoTd = document.createElement('td');
+        const memoInput = document.createElement('input');
+        memoInput.type = 'text';
+        memoInput.placeholder = '선택 입력';
+        memoInput.value = m.memo || '';
+        memoInput.addEventListener('change', (e) => {
+          updateStockMovementField(m.id, 'memo', e.target.value || null);
+        });
+        memoTd.appendChild(memoInput);
+        tr.appendChild(memoTd);
 
         const actionTd = document.createElement('td');
         actionTd.className = 'action-cell';
@@ -2374,7 +2680,7 @@
       if (sales.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 12;
+        td.colSpan = 13;
         td.style.color = 'var(--muted)';
         td.style.fontSize = '12px';
         td.textContent = '이번 조회월에 등록된 판매가 없어요.';
